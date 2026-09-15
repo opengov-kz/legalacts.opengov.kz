@@ -36,6 +36,22 @@ class StubFetcher:
         self.lang_calls.append(lang)
 
 
+class FlakyStubFetcher(StubFetcher):
+    """StubFetcher variant where .get() raises for a chosen set of URLs,
+    simulating a broken/unreachable page so run()'s per-entry error handling
+    (mark_error + continue) can be exercised."""
+
+    def __init__(self, pages, fail_urls=()):
+        super().__init__(pages)
+        self._fail_urls = set(fail_urls)
+
+    def get(self, url):
+        if url in self._fail_urls:
+            self.calls.append(url)
+            raise RuntimeError("simulated network failure")
+        return super().get(url)
+
+
 def test_process_list_entry_enqueues_documents_and_next_page():
     conn = _connect()
     list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
@@ -119,3 +135,58 @@ def test_run_seeds_queue_and_respects_limit(tmp_path, monkeypatch):
     ).fetchall()
     assert len(doc_rows) == 5
     assert queue.section_for(conn, doc_rows[0]["url"]) == "npa"
+
+
+def test_run_marks_broken_entry_as_error_and_continues_processing_others(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "test.db")
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+
+    bad_url = "https://legalacts.egov.kz/npa/view?id=99999999"
+    good_url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    # Pre-seed the queue directly (bypassing seed_queue/process_list_entry)
+    # so run() finds pending work and skips seeding entirely. The bad entry
+    # is discovered first so it is processed before the good one.
+    seed_conn = sqlite3.connect(db_path)
+    seed_conn.row_factory = sqlite3.Row
+    db.init_db(seed_conn)
+    queue.enqueue(seed_conn, bad_url, "document", "2020-01-01T00:00:00+00:00", section="npa")
+    queue.enqueue(seed_conn, good_url, "document", "2020-01-01T00:00:01+00:00", section="npa")
+    seed_conn.close()
+
+    fetcher = FlakyStubFetcher({good_url: [ru_html, kk_html]}, fail_urls={bad_url})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(db_path, limit=2)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    bad_row = conn.execute(
+        "SELECT status, last_error FROM crawl_queue WHERE url = ?", (bad_url,)
+    ).fetchone()
+    assert bad_row["status"] == "error"
+    assert bad_row["last_error"]
+
+    good_row = conn.execute(
+        "SELECT status FROM crawl_queue WHERE url = ?", (good_url,)
+    ).fetchone()
+    assert good_row["status"] == "done"
+
+    doc = conn.execute(
+        "SELECT * FROM documents WHERE external_id = 15906353"
+    ).fetchone()
+    assert doc is not None
+    assert doc["status"] == "Архив"
+
+    comment_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM comments WHERE document_id = ?", (doc["id"],)
+    ).fetchone()["n"]
+    assert comment_count == 20
+
+    # No row exists for the failed document (upsert_document was never reached).
+    failed_doc = conn.execute(
+        "SELECT * FROM documents WHERE external_id = 99999999"
+    ).fetchone()
+    assert failed_doc is None

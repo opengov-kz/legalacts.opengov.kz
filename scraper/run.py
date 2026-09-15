@@ -69,12 +69,18 @@ def process_document_entry(conn, fetcher, url, section="npa"):
     fields["raw_html_ru"] = ru_html
 
     fetcher.set_language("kk", location=url)
-    kk_response = fetcher.get(url)
-    kk_html = kk_response.text
-    kk_fields = document_page.parse_document_page(kk_html)
-    fields["title_kk"] = kk_fields["title"]
-    fields["raw_html_kk"] = kk_html
-    fetcher.set_language("ru", location=url)
+    try:
+        kk_response = fetcher.get(url)
+        kk_html = kk_response.text
+        kk_fields = document_page.parse_document_page(kk_html)
+        fields["title_kk"] = kk_fields["title"]
+        fields["raw_html_kk"] = kk_html
+    finally:
+        # The Fetcher's single session is reused for the whole crawl, so its
+        # server-side language cookie must always be reverted to "ru" here,
+        # even if the kk fetch/parse above raised — otherwise every later
+        # document's "ru" fetch in this run would silently receive kk HTML.
+        fetcher.set_language("ru", location=url)
 
     external_id = int(dict(parse_qsl(urlsplit(url).query))["id"])
     parsed_comments = comments_parser.parse_comments(ru_html)
