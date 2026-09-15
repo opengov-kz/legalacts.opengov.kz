@@ -13,19 +13,41 @@ def _connect():
 def test_upsert_document_inserts_new_row():
     conn = _connect()
     fields = {
-        "title_ru": "Заголовок", "status": "Архив", "doc_type": "Приказ",
-        "government_body": "Минтруда", "created_date": "09/09/2026",
-        "discussion_end_date": "14/09/2026", "comments_total": 24,
-        "likes_count": 0, "dislikes_count": 1, "raw_html_ru": "<html>ru</html>",
+        "title_ru": "Title_RU_001", "title_kk": "Title_KK_001",
+        "status": "Status_Value_001", "doc_type": "DocType_Value_001",
+        "government_body": "Body_Value_001", "created_date": "2026-01-01",
+        "discussion_end_date": "2026-12-31", "comments_total": 42,
+        "likes_count": 99, "dislikes_count": 88,
+        "raw_html_ru": "<html>content_ru_001</html>",
+        "raw_html_kk": "<html>content_kk_001</html>",
     }
+    section = "npa_section_001"
+    url = "https://legalacts.test/npa/view?id=15906353"
+    now = "2026-09-15T00:00:00"
+
     doc_id = store.upsert_document(
-        conn, 15906353, "npa", "https://legalacts.egov.kz/npa/view?id=15906353",
-        fields, "2026-09-15T00:00:00",
+        conn, 15906353, section, url, fields, now,
     )
     row = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+
+    # Assert all 14 document fields with distinct sentinel values
     assert row["external_id"] == 15906353
-    assert row["title_ru"] == "Заголовок"
-    assert row["comments_total"] == 24
+    assert row["section"] == "npa_section_001"
+    assert row["url"] == "https://legalacts.test/npa/view?id=15906353"
+    assert row["title_ru"] == "Title_RU_001"
+    assert row["title_kk"] == "Title_KK_001"
+    assert row["status"] == "Status_Value_001"
+    assert row["doc_type"] == "DocType_Value_001"
+    assert row["government_body"] == "Body_Value_001"
+    assert row["created_date"] == "2026-01-01"
+    assert row["discussion_end_date"] == "2026-12-31"
+    assert row["comments_total"] == 42
+    assert row["likes_count"] == 99
+    assert row["dislikes_count"] == 88
+    assert row["raw_html_ru"] == "<html>content_ru_001</html>"
+    assert row["raw_html_kk"] == "<html>content_kk_001</html>"
+
+    # Assert metadata fields
     assert row["first_seen_at"] == "2026-09-15T00:00:00"
     assert row["last_checked_at"] == "2026-09-15T00:00:00"
 
