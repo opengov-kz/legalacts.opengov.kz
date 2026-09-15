@@ -85,3 +85,27 @@ def test_requeue_stale_documents_resets_old_done_documents_only():
         ("https://example.test/list",),
     ).fetchone()
     assert row_list["status"] == "done"
+
+
+def test_requeue_stale_lists_resets_old_done_lists_only():
+    conn = _connect()
+    queue.enqueue(conn, "https://example.test/list-old", "list", "t0")
+    queue.enqueue(conn, "https://example.test/list-new", "list", "t0")
+    queue.enqueue(conn, "https://example.test/doc", "document", "t0")
+    queue.mark_done(conn, "https://example.test/list-old", "2026-09-01T00:00:00")
+    queue.mark_done(conn, "https://example.test/list-new", "2026-09-14T00:00:00")
+    queue.mark_done(conn, "https://example.test/doc", "2026-09-01T00:00:00")
+
+    queue.requeue_stale_lists(conn, "2026-09-10T00:00:00")
+
+    assert queue.next_pending(conn, "list") == "https://example.test/list-old"
+    row_new = conn.execute(
+        "SELECT status FROM crawl_queue WHERE url = ?",
+        ("https://example.test/list-new",),
+    ).fetchone()
+    assert row_new["status"] == "done"
+    row_doc = conn.execute(
+        "SELECT status FROM crawl_queue WHERE url = ?",
+        ("https://example.test/doc",),
+    ).fetchone()
+    assert row_doc["status"] == "done"

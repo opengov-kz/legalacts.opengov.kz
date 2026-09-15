@@ -58,6 +58,12 @@ def upsert_document(conn, external_id, section, url, fields, now):
 
 def upsert_comments(conn, document_id, comments, now):
     for comment in comments:
+        if comment["external_id"] is None:
+            # A comment whose <p> element is missing or has no id attribute can't
+            # be de-duplicated across re-crawls (external_comment_id is NOT NULL
+            # in the schema); dropping just this one comment is strictly better
+            # than letting the INSERT raise and lose the whole document.
+            continue
         conn.execute(
             """
             INSERT INTO comments (

@@ -91,3 +91,39 @@ def test_upsert_comments_inserts_and_preserves_first_seen_at_on_update():
     ).fetchone()
     assert row["status"] == "accepted"
     assert row["first_seen_at"] == "2026-09-01T00:00:00"
+
+
+def test_upsert_comments_skips_comment_with_none_external_id():
+    conn = _connect()
+    doc_id = store.upsert_document(conn, 1, "npa", "url1", {"title_ru": "V"}, "t0")
+    comments = [
+        {
+            "external_id": 100, "parent_external_id": None, "author_name": "A",
+            "body": "text A", "article_ref": None, "status": "accepted",
+            "commented_at_raw": "10/09 - 11:05",
+        },
+        {
+            "external_id": None, "parent_external_id": None, "author_name": "B",
+            "body": "text with no id", "article_ref": None, "status": None,
+            "commented_at_raw": None,
+        },
+        {
+            "external_id": 101, "parent_external_id": None, "author_name": "C",
+            "body": "text C", "article_ref": None, "status": "rejected",
+            "commented_at_raw": "11/09 - 12:00",
+        },
+    ]
+
+    # Must not raise, despite the middle comment having no external_id.
+    store.upsert_comments(conn, doc_id, comments, "2026-09-01T00:00:00")
+
+    rows = conn.execute(
+        "SELECT external_comment_id FROM comments WHERE document_id = ? ORDER BY external_comment_id",
+        (doc_id,),
+    ).fetchall()
+    assert [row["external_comment_id"] for row in rows] == [100, 101]
+
+    count = conn.execute(
+        "SELECT COUNT(*) AS n FROM comments WHERE document_id = ?", (doc_id,)
+    ).fetchone()["n"]
+    assert count == 2

@@ -36,8 +36,10 @@ class Fetcher:
                     raise
                 self._sleep(self.backoff**attempt)
                 continue
-            if response.status_code >= 500 and attempt < self.max_retries:
-                attempt += 1
-                self._sleep(self.backoff**attempt)
-                continue
+            if response.status_code >= 500:
+                if attempt < self.max_retries:
+                    attempt += 1
+                    self._sleep(self.backoff**attempt)
+                    continue
+                response.raise_for_status()
             return response

@@ -9,6 +9,10 @@ class FakeResponse:
         self.status_code = status_code
         self.text = text
 
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} error")
+
 
 class FakeSession:
     def __init__(self, responses):
@@ -53,6 +57,17 @@ def test_get_raises_after_exhausting_retries_on_network_error():
     )
     with pytest.raises(requests.ConnectionError):
         fetcher.get("https://example.test/page")
+
+
+def test_get_raises_after_exhausting_retries_on_server_error():
+    session = FakeSession([FakeResponse(500), FakeResponse(500)])
+    fetcher = Fetcher(
+        "test-agent", max_retries=1, session=session,
+        sleep_func=lambda s: None, random_func=lambda: 0,
+    )
+    with pytest.raises(requests.HTTPError):
+        fetcher.get("https://example.test/page")
+    assert len(session.calls) == 2
 
 
 def test_get_returns_404_response_without_retrying():

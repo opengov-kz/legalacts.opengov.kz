@@ -48,3 +48,12 @@ def requeue_stale_documents(conn, older_than_iso):
         (older_than_iso,),
     )
     conn.commit()
+
+
+def requeue_stale_lists(conn, older_than_iso):
+    conn.execute(
+        "UPDATE crawl_queue SET status = 'pending' WHERE page_type = 'list' "
+        "AND status = 'done' AND processed_at < ?",
+        (older_than_iso,),
+    )
+    conn.commit()

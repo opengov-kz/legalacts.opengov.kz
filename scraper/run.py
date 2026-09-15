@@ -47,6 +47,8 @@ def _set_page_param(url, page):
 
 def process_list_entry(conn, fetcher, url, section="npa"):
     response = fetcher.get(url)
+    if response.status_code == 404:
+        return
     html = response.text
 
     discovered = now_iso()
@@ -63,6 +65,8 @@ def process_list_entry(conn, fetcher, url, section="npa"):
 
 def process_document_entry(conn, fetcher, url, section="npa"):
     ru_response = fetcher.get(url)
+    if ru_response.status_code == 404:
+        return
     ru_html = ru_response.text
     fields = document_page.parse_document_page(ru_html)
     fields["title_ru"] = fields.pop("title")
@@ -101,13 +105,12 @@ def run(db_path, limit=None):
     if not has_pending:
         seed_queue(conn)
 
-    queue.requeue_stale_documents(
-        conn,
-        (
-            datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(days=STALE_AFTER_DAYS)
-        ).isoformat(),
-    )
+    stale_threshold = (
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(days=STALE_AFTER_DAYS)
+    ).isoformat()
+    queue.requeue_stale_documents(conn, stale_threshold)
+    queue.requeue_stale_lists(conn, stale_threshold)
 
     fetcher = Fetcher(USER_AGENT)
     processed = 0
