@@ -9,8 +9,8 @@ from .parsers import document_page, list_page
 
 BASE_URL = "https://legalacts.egov.kz"
 USER_AGENT = (
-    "legalacts-research-bot/0.1 (личный исследовательский проект; "
-    "контакт: k.nefyodov@qbs.kz)"
+    "legalacts-research-bot/0.1 (personal research project; "
+    "contact: k.nefyodov@qbs.kz)"
 )
 STALE_AFTER_DAYS = 7
 

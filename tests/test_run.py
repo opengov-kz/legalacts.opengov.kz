@@ -40,6 +40,14 @@ class StubFetcher:
         self.lang_calls.append(lang)
 
 
+def test_user_agent_is_latin1_encodable():
+    # HTTP header values (RFC 7230 §3.2) must be ISO-8859-1-encodable. requests
+    # sets this header directly on the socket write, so a non-latin-1 User-Agent
+    # (e.g. raw Cyrillic) raises UnicodeEncodeError on every real request while
+    # still passing unit tests that stub out the session entirely.
+    run_module.USER_AGENT.encode("latin-1")
+
+
 class FlakyStubFetcher(StubFetcher):
     """StubFetcher variant where .get() raises for a chosen set of URLs,
     simulating a broken/unreachable page so run()'s per-entry error handling
