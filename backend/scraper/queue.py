@@ -1,59 +1,75 @@
-def enqueue(conn, url, page_type, discovered_at, section=None):
-    conn.execute(
-        "INSERT OR IGNORE INTO crawl_queue (url, page_type, section, status, attempts, discovered_at) "
-        "VALUES (?, ?, ?, 'pending', 0, ?)",
-        (url, page_type, section, discovered_at),
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from db.models import CrawlQueueEntry
+
+
+def enqueue(session, url, page_type, discovered_at, section=None):
+    stmt = (
+        pg_insert(CrawlQueueEntry)
+        .values(
+            url=url, page_type=page_type, section=section,
+            status="pending", attempts=0, discovered_at=discovered_at,
+        )
+        .on_conflict_do_nothing(index_elements=["url"])
     )
-    conn.commit()
+    session.execute(stmt)
+    session.commit()
 
 
-def next_pending(conn, page_type):
-    row = conn.execute(
-        "SELECT url FROM crawl_queue WHERE page_type = ? AND status = 'pending' "
-        "ORDER BY discovered_at LIMIT 1",
-        (page_type,),
-    ).fetchone()
-    return row["url"] if row else None
-
-
-def section_for(conn, url):
-    row = conn.execute(
-        "SELECT section FROM crawl_queue WHERE url = ?", (url,)
-    ).fetchone()
-    return row["section"] if row else None
-
-
-def mark_done(conn, url, processed_at):
-    conn.execute(
-        "UPDATE crawl_queue SET status = 'done', processed_at = ?, attempts = attempts + 1 "
-        "WHERE url = ?",
-        (processed_at, url),
+def next_pending(session, page_type):
+    stmt = (
+        select(CrawlQueueEntry.url)
+        .where(CrawlQueueEntry.page_type == page_type, CrawlQueueEntry.status == "pending")
+        .order_by(CrawlQueueEntry.discovered_at)
+        .limit(1)
     )
-    conn.commit()
+    return session.execute(stmt).scalar_one_or_none()
 
 
-def mark_error(conn, url, error_message, processed_at):
-    conn.execute(
-        "UPDATE crawl_queue SET status = 'error', last_error = ?, processed_at = ?, "
-        "attempts = attempts + 1 WHERE url = ?",
-        (error_message, processed_at, url),
+def section_for(session, url):
+    stmt = select(CrawlQueueEntry.section).where(CrawlQueueEntry.url == url)
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def mark_done(session, url, processed_at):
+    entry = session.get(CrawlQueueEntry, url)
+    entry.status = "done"
+    entry.processed_at = processed_at
+    entry.attempts += 1
+    session.commit()
+
+
+def mark_error(session, url, error_message, processed_at):
+    entry = session.get(CrawlQueueEntry, url)
+    entry.status = "error"
+    entry.last_error = error_message
+    entry.processed_at = processed_at
+    entry.attempts += 1
+    session.commit()
+
+
+def requeue_stale_documents(session, older_than_iso):
+    session.execute(
+        update(CrawlQueueEntry)
+        .where(
+            CrawlQueueEntry.page_type == "document",
+            CrawlQueueEntry.status == "done",
+            CrawlQueueEntry.processed_at < older_than_iso,
+        )
+        .values(status="pending")
     )
-    conn.commit()
+    session.commit()
 
 
-def requeue_stale_documents(conn, older_than_iso):
-    conn.execute(
-        "UPDATE crawl_queue SET status = 'pending' WHERE page_type = 'document' "
-        "AND status = 'done' AND processed_at < ?",
-        (older_than_iso,),
+def requeue_stale_lists(session, older_than_iso):
+    session.execute(
+        update(CrawlQueueEntry)
+        .where(
+            CrawlQueueEntry.page_type == "list",
+            CrawlQueueEntry.status == "done",
+            CrawlQueueEntry.processed_at < older_than_iso,
+        )
+        .values(status="pending")
     )
-    conn.commit()
-
-
-def requeue_stale_lists(conn, older_than_iso):
-    conn.execute(
-        "UPDATE crawl_queue SET status = 'pending' WHERE page_type = 'list' "
-        "AND status = 'done' AND processed_at < ?",
-        (older_than_iso,),
-    )
-    conn.commit()
+    session.commit()
