@@ -1,26 +1,16 @@
-import sqlite3
-
-from scraper import db
+from sqlalchemy import inspect
 
 
-def _connect():
-    conn = sqlite3.connect(":memory:")
-    db.init_db(conn)
-    return conn
+def test_create_all_creates_expected_tables(pg_engine):
+    from db.models import Base
 
-
-def test_init_db_creates_expected_tables():
-    conn = _connect()
-    tables = {
-        row[0]
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
+    Base.metadata.create_all(pg_engine)
+    tables = set(inspect(pg_engine).get_table_names())
     assert {"documents", "comments", "crawl_queue"}.issubset(tables)
 
 
-def test_documents_table_has_expected_columns():
-    conn = _connect()
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
+def test_documents_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("documents")}
     assert columns == {
         "id", "external_id", "section", "url", "title_ru", "title_kk",
         "status", "doc_type", "government_body", "created_date",
@@ -30,9 +20,8 @@ def test_documents_table_has_expected_columns():
     }
 
 
-def test_comments_table_has_expected_columns():
-    conn = _connect()
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(comments)")}
+def test_comments_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("comments")}
     assert columns == {
         "id", "document_id", "external_comment_id",
         "parent_external_comment_id", "author_name", "body", "article_ref",
@@ -40,9 +29,8 @@ def test_comments_table_has_expected_columns():
     }
 
 
-def test_crawl_queue_table_has_expected_columns():
-    conn = _connect()
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(crawl_queue)")}
+def test_crawl_queue_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("crawl_queue")}
     assert columns == {
         "url", "page_type", "section", "status", "attempts", "last_error",
         "discovered_at", "processed_at",
