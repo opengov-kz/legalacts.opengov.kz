@@ -122,6 +122,7 @@ def run(database_url, limit=None):
                 process_list_entry(session, fetcher, list_url, section=section)
                 queue.mark_done(session, list_url, now_iso())
             except Exception as exc:
+                session.rollback()
                 queue.mark_error(session, list_url, str(exc), now_iso())
             processed += 1
             continue
@@ -133,6 +134,7 @@ def run(database_url, limit=None):
                 process_document_entry(session, fetcher, document_url, section=section)
                 queue.mark_done(session, document_url, now_iso())
             except Exception as exc:
+                session.rollback()
                 queue.mark_error(session, document_url, str(exc), now_iso())
             processed += 1
             continue
