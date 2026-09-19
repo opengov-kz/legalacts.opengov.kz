@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from testcontainers.postgres import PostgresContainer
@@ -10,6 +11,8 @@ from testcontainers.postgres import PostgresContainer
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from app.config import Settings  # noqa: E402
+from app.main import create_app  # noqa: E402
 from db.models import Base  # noqa: E402
 
 
@@ -43,3 +46,12 @@ def db_session(pg_engine):
     session = SessionLocal()
     yield session
     session.close()
+
+
+@pytest.fixture
+def api_client(database_url):
+    settings = Settings(database_url=database_url, api_key="test-key")
+    app = create_app(settings)
+    client = TestClient(app)
+    client.headers.update({"X-API-Key": "test-key"})
+    return client
