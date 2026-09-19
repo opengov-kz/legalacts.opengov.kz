@@ -15,13 +15,15 @@
 
 Next.js 14+ (App Router) with TypeScript, deployed as a fourth Docker Compose service (`frontend`) alongside `db`/`api`/`worker`.
 
-**Two layers inside the Next.js app:**
+**Two layers inside the Next.js app, sharing one set of data-access functions:**
 
-1. **BFF route handlers** (`app/api/*`) — thin server-side proxies to FastAPI. Each handler reads `FASTAPI_BASE_URL` and `API_KEY` from server-only environment variables, forwards incoming query parameters unchanged, attaches `X-API-Key`, and returns the FastAPI JSON response 1:1 (status code included). No transformation, aggregation, or caching logic beyond this — purely an isolation boundary so the API key never reaches the browser and so the frontend has a stable internal contract to build against, decoupled from the backend base URL.
+1. **`lib/api-client.ts`** — server-only TypeScript functions (`getDocuments()`, `getDocument(id)`, `getAnalyticsSummary()`, `getAnalyticsTimeseries(interval)`, `getCrawlStatus()`) that call FastAPI directly: read `FASTAPI_BASE_URL`/`API_KEY` from server-only environment variables, attach `X-API-Key`, fetch, parse JSON into the typed shapes in `types/api.ts`, and throw on non-2xx (404 vs. other errors distinguished so callers can call `notFound()` vs. let the error propagate). This module is never imported by client components — enforced by convention (it lives under `lib/`, only referenced from Server Components and route handlers) and by the fact it reads server-only env vars that are simply undefined in the browser bundle.
 
-2. **Server Components** (pages under `app/[locale]/*`) — fetch from the app's own internal `/api/*` routes using relative URLs (server-side `fetch`, no network hop outside the container). All data fetching for page render happens server-side; there is no client-side data fetching in v1 (no full-text search, no live polling), so no client state library is needed.
+2. **Server Components** (pages under `app/[locale]/*`) import and call these functions **directly, in-process** — not via HTTP. A server-side `fetch('/api/...')` from within the same Next.js server has no implicit origin to resolve a relative URL against (unlike the browser), so routing page rendering through the app's own HTTP layer would require constructing an absolute self-URL for no benefit; calling the shared function directly avoids that entirely.
 
-This keeps the API key isolated to two places (BFF route handlers only) while leaving room to later add client-side interactivity against the same `/api/*` routes without restructuring.
+3. **BFF route handlers** (`app/api/*`) — thin wrappers that call the *same* `lib/api-client.ts` functions and serialize the result with `NextResponse.json()`, matching FastAPI's status codes (404 → 404, etc.). They exist for future client-side fetches (e.g. if interactivity is added later) and are not used by the page rendering path in v1.
+
+The API key is isolated to `lib/api-client.ts` and the server env either way — both consumers (Server Components, route handlers) sit on the server and never expose it.
 
 **Environment variables (server-only, never exposed to the client bundle):**
 - `FASTAPI_BASE_URL` — e.g. `http://api:8000` inside Docker Compose.
@@ -58,14 +60,15 @@ A shared header/nav provides links between the four pages and a locale switcher 
 ## Error handling
 
 Standard Next.js App Router mechanisms, no custom error pages:
-- `not-found.tsx` per locale segment — used for unknown routes and for a document id that FastAPI returns 404 for.
-- `error.tsx` per locale segment — catches thrown errors from Server Components (e.g., BFF route returning 5xx, FastAPI unreachable), shows a generic "something went wrong" message with a retry action (Next.js's built-in `reset()`).
-- BFF route handlers pass through FastAPI's status code and body as-is; a non-2xx response causes the calling Server Component's `fetch` to be checked explicitly and `notFound()`/`throw` accordingly (404 → `notFound()`, anything else → thrown error caught by `error.tsx`).
+- `not-found.tsx` per locale segment — used for unknown routes and for a document id that `getDocument(id)` reports as 404.
+- `error.tsx` per locale segment — catches errors thrown by Server Components (e.g. `lib/api-client.ts` functions throwing on a non-404 non-2xx response, or FastAPI unreachable), shows a generic "something went wrong" message with a retry action (Next.js's built-in `reset()`).
+- `lib/api-client.ts` functions distinguish 404 from other failures: a 404 response resolves to `null` (callers call Next's `notFound()`), any other non-2xx status or network failure throws an `Error` (caught by `error.tsx`). BFF route handlers (`app/api/*`) call the same functions and map that same distinction to HTTP status codes (`null` → 404, thrown error → 500) when serializing with `NextResponse.json()`.
 
 ## Testing
 
 - **Vitest + React Testing Library:**
-  - BFF route handlers: verify `X-API-Key` is attached, query params are forwarded unchanged, FastAPI status/body pass through unmodified, and the key is never present in any response body.
+  - `lib/api-client.ts` functions: verify `X-API-Key` is attached, query params are built correctly, JSON responses are parsed into the expected shape, 404 resolves to `null`, and other non-2xx/network failures throw.
+  - `app/api/*` route handlers: verify each one calls the corresponding `api-client` function and serializes its result/error into the right HTTP response (200 + body, 404, or 500).
   - Key components (document card/table, filter bar, pagination, locale switcher, comment list) rendered with mock data.
 - No Postgres/testcontainers dependency for frontend tests — all backend interaction is mocked at the `fetch` boundary.
 - Backend's existing pytest suite (58/58) is unaffected and unchanged by this work.
