@@ -1,5 +1,11 @@
+import os
 import sys
 from pathlib import Path
+
+# Set test-only env defaults before importing app.main (which tries to create_app on import)
+# Use SQLite in-memory database for the module-level app creation (never actually used in tests)
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("API_KEY", "test-key-placeholder")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,8 +17,6 @@ from testcontainers.postgres import PostgresContainer
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.config import Settings  # noqa: E402
-from app.main import create_app  # noqa: E402
 from db.models import Base  # noqa: E402
 
 
@@ -50,6 +54,9 @@ def db_session(pg_engine):
 
 @pytest.fixture
 def api_client(database_url):
+    from app.config import Settings  # noqa: E402
+    from app.main import create_app  # noqa: E402
+
     settings = Settings(database_url=database_url, api_key="test-key")
     app = create_app(settings)
     client = TestClient(app)

@@ -19,9 +19,4 @@ def create_app(settings=None) -> FastAPI:
     return app
 
 
-try:
-    app = create_app()
-except Exception:
-    # If environment variables aren't set (e.g., during testing),
-    # app won't be created. This is OK because tests create app explicitly.
-    app = None
+app = create_app()
