@@ -1,11 +1,13 @@
 import argparse
 import datetime
+import os
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from . import db, queue, store
-from .fetch import Fetcher
-from .parsers import comments as comments_parser
-from .parsers import document_page, list_page
+from db.session import create_engine_and_session_factory
+from scraper import queue, store
+from scraper.fetch import Fetcher
+from scraper.parsers import comments as comments_parser
+from scraper.parsers import document_page, list_page
 
 BASE_URL = "https://legalacts.egov.kz"
 USER_AGENT = (
@@ -23,14 +25,15 @@ SEED_LIST_URLS = [
     ("withdraw", f"{BASE_URL}/application/withdraw"),
 ]
 
+
 def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def seed_queue(conn):
+def seed_queue(session):
     discovered = now_iso()
     for section, url in SEED_LIST_URLS:
-        queue.enqueue(conn, url, "list", discovered, section=section)
+        queue.enqueue(session, url, "list", discovered, section=section)
 
 
 def _current_page(url):
@@ -45,7 +48,7 @@ def _set_page_param(url, page):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def process_list_entry(conn, fetcher, url, section="npa"):
+def process_list_entry(session, fetcher, url, section="npa"):
     response = fetcher.get(url)
     if response.status_code == 404:
         return
@@ -53,17 +56,17 @@ def process_list_entry(conn, fetcher, url, section="npa"):
 
     discovered = now_iso()
     for card in list_page.parse_list_page(html):
-        queue.enqueue(conn, card["url"], "document", discovered, section=section)
+        queue.enqueue(session, card["url"], "document", discovered, section=section)
 
     total_pages = list_page.parse_total_pages(html)
     current_page = _current_page(url)
     if current_page < total_pages:
         queue.enqueue(
-            conn, _set_page_param(url, current_page + 1), "list", discovered, section=section
+            session, _set_page_param(url, current_page + 1), "list", discovered, section=section
         )
 
 
-def process_document_entry(conn, fetcher, url, section="npa"):
+def process_document_entry(session, fetcher, url, section="npa"):
     ru_response = fetcher.get(url)
     if ru_response.status_code == 404:
         return
@@ -80,81 +83,73 @@ def process_document_entry(conn, fetcher, url, section="npa"):
         fields["title_kk"] = kk_fields["title"]
         fields["raw_html_kk"] = kk_html
     finally:
-        # The Fetcher's single session is reused for the whole crawl, so its
-        # server-side language cookie must always be reverted to "ru" here,
-        # even if the kk fetch/parse above raised — otherwise every later
-        # document's "ru" fetch in this run would silently receive kk HTML.
         fetcher.set_language("ru", location=url)
 
     external_id = int(dict(parse_qsl(urlsplit(url).query))["id"])
     parsed_comments = comments_parser.parse_comments(ru_html)
 
     timestamp = now_iso()
-    document_id = store.upsert_document(conn, external_id, section, url, fields, timestamp)
-    store.upsert_comments(conn, document_id, parsed_comments, timestamp)
+    document_id = store.upsert_document(session, external_id, section, url, fields, timestamp)
+    store.upsert_comments(session, document_id, parsed_comments, timestamp)
 
 
-def run(db_path, limit=None):
-    conn = db.connect(db_path)
-    db.init_db(conn)
+def run(database_url, limit=None):
+    engine, SessionLocal = create_engine_and_session_factory(database_url)
+    session = SessionLocal()
 
     has_pending = (
-        queue.next_pending(conn, "list") is not None
-        or queue.next_pending(conn, "document") is not None
+        queue.next_pending(session, "list") is not None
+        or queue.next_pending(session, "document") is not None
     )
     if not has_pending:
-        seed_queue(conn)
+        seed_queue(session)
 
     stale_threshold = (
         datetime.datetime.now(datetime.timezone.utc)
         - datetime.timedelta(days=STALE_AFTER_DAYS)
     ).isoformat()
-    queue.requeue_stale_documents(conn, stale_threshold)
-    queue.requeue_stale_lists(conn, stale_threshold)
+    queue.requeue_stale_documents(session, stale_threshold)
+    queue.requeue_stale_lists(session, stale_threshold)
 
     fetcher = Fetcher(USER_AGENT)
     processed = 0
 
     while limit is None or processed < limit:
-        list_url = queue.next_pending(conn, "list")
+        list_url = queue.next_pending(session, "list")
         if list_url is not None:
-            # Раздел записан в очередь при постановке этой строки (см. Task 2) —
-            # по самому URL списочной страницы его тоже можно было бы вычислить
-            # (/Arvlist, /application/withdraw, /list?types[]=... различимы),
-            # но чтение из очереди даёт один источник истины и для списков, и для
-            # документов, у которых URL раздел не выдаёт (Task 8).
-            section = queue.section_for(conn, list_url) or "npa"
+            section = queue.section_for(session, list_url) or "npa"
             try:
-                process_list_entry(conn, fetcher, list_url, section=section)
-                queue.mark_done(conn, list_url, now_iso())
+                process_list_entry(session, fetcher, list_url, section=section)
+                queue.mark_done(session, list_url, now_iso())
             except Exception as exc:
-                # Одна сломанная страница не должна останавливать весь обход (спек, раздел 3).
-                queue.mark_error(conn, list_url, str(exc), now_iso())
+                queue.mark_error(session, list_url, str(exc), now_iso())
             processed += 1
             continue
 
-        document_url = queue.next_pending(conn, "document")
+        document_url = queue.next_pending(session, "document")
         if document_url is not None:
-            section = queue.section_for(conn, document_url) or "npa"
+            section = queue.section_for(session, document_url) or "npa"
             try:
-                process_document_entry(conn, fetcher, document_url, section=section)
-                queue.mark_done(conn, document_url, now_iso())
+                process_document_entry(session, fetcher, document_url, section=section)
+                queue.mark_done(session, document_url, now_iso())
             except Exception as exc:
-                queue.mark_error(conn, document_url, str(exc), now_iso())
+                queue.mark_error(session, document_url, str(exc), now_iso())
             processed += 1
             continue
 
         break
 
-    conn.close()
+    session.close()
+    engine.dispose()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Обход портала legalacts.egov.kz")
-    parser.add_argument("--db", default="legalacts.db")
+    parser.add_argument("--database-url", default=None, help="Override DATABASE_URL env var")
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
-    run(args.db, limit=args.limit)
+    database_url = args.database_url or os.environ["DATABASE_URL"]
+    run(database_url, limit=args.limit)
 
 
 if __name__ == "__main__":
