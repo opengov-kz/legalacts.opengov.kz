@@ -1,7 +1,11 @@
+import logging
 import os
 import time
 
 from scraper.run import run
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def main(sleep_func=time.sleep):
@@ -11,7 +15,11 @@ def main(sleep_func=time.sleep):
     limit = int(limit_raw) if limit_raw else None
 
     while True:
-        run(database_url, limit=limit)
+        try:
+            run(database_url, limit=limit)
+            logger.info("crawl cycle complete")
+        except Exception:
+            logger.exception("crawl cycle failed")
         sleep_func(interval)
 
 

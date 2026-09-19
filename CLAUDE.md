@@ -22,7 +22,7 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt   # Linux/macOS: .venv/bin/pip install -r requirements.txt
 ```
 
-Python 3.8+. Основные зависимости: `requests`, `beautifulsoup4` + `lxml`, `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `pytest`, `testcontainers`.
+Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`; backend теперь рассчитан на запуск внутри контейнера. Основные зависимости: `requests`, `beautifulsoup4` + `lxml`, `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `pytest`, `testcontainers`.
 
 Для полного стека с БД и worker'ом (рекомендуется для локального тестирования):
 
@@ -36,7 +36,7 @@ docker compose up --build
 - `api`: FastAPI приложение (на `localhost:8000`, требует `X-API-Key` в заголовках)
 - `worker`: фоновый worker, запускающий скрейпер по расписанию
 
-Env-переменные в `.env.example`; для локальных тестов можно скопировать в `.env` или использовать значения по умолчанию.
+Env-переменные в `.env.example`. Перед `docker compose up` файл `.env` ОБЯЗАТЕЛЕН (скопировать из `.env.example` и заполнить) — у `${VAR}`-подстановок в `docker-compose.yml` нет значений по умолчанию, и без `.env` `POSTGRES_DB`/`POSTGRES_USER`/и т.д. резолвятся в пустые строки, из-за чего `db` не стартует.
 
 ## Commands
 
@@ -88,8 +88,8 @@ docker compose up --build
 Код находится в `backend/` и разделён по слоям:
 
 **Слой хранилища (PostgreSQL via SQLAlchemy):**
-- `backend/db/models.py` — ORM-модели (`Document`, `Comment`, `CrawlQueue`, `CrawlSummary`) для таблиц в Postgres.
-- `backend/db/session.py` — создание engine'а и session factory'я, контекстные менеджеры для работы с БД.
+- `backend/db/models.py` — ORM-модели (`Document`, `Comment`, `CrawlQueueEntry`) для таблиц в Postgres.
+- `backend/db/session.py` — `create_engine_and_session_factory()`: создаёт engine и session factory, вызывает `Base.metadata.create_all()`.
 
 **Слой скрейпера (парсеры и очередь):**
 - `backend/scraper/queue.py` — управление очередью обхода (`CrawlQueue`): `enqueue`, `next_pending`, `section_for`, `mark_done`, `mark_error`, `requeue_stale_documents`, `requeue_stale_lists`. Единственный источник истины о том, что уже обработано (двигатель резюмируемости).
@@ -102,11 +102,12 @@ docker compose up --build
 - `backend/worker/loop.py` — запускает скрейпер на расписание (`SCRAPE_INTERVAL_SECONDS`) в infinite loop'е.
 
 **FastAPI приложение (read API):**
-- `backend/app/main.py` — инициализация приложения, регистрация роутов, middleware (вроде API-key authentication через `X-API-Key`).
-- `backend/app/config.py` — конфигурация из env-переменных (`DATABASE_URL`, `API_KEY`, `SCRAPE_INTERVAL_SECONDS`, и т.д.).
-- `backend/app/deps.py` — зависимости (dependency injection): `get_db_session()`, `verify_api_key()`.
-- `backend/app/routers/documents.py` — endpoint'ы `GET /documents`, `GET /documents/{id}` с фильтром по разделу и поиском.
-- `backend/app/routers/analytics.py` — endpoint'ы `GET /analytics/summary`, `GET /analytics/timeseries/{section}` с агрегацией по датам.
+- `backend/app/main.py` — `create_app()`: инициализация приложения, регистрация роутов, `GET /health`.
+- `backend/app/config.py` — `Settings` (pydantic-settings) из env-переменных: только `database_url`, `api_key`. `SCRAPE_INTERVAL_SECONDS`/`WORKER_LIMIT` в `Settings` не входят — их читает напрямую через `os.environ` `backend/worker/loop.py`.
+- `backend/app/deps.py` — зависимости (dependency injection): `get_db()`, `require_api_key()`.
+- API-key авторизация реализована не как middleware, а как FastAPI dependency на уровне роутера (`dependencies=[Depends(require_api_key)]` в каждом `APIRouter`).
+- `backend/app/routers/documents.py` — endpoint'ы `GET /documents` (фильтры `section`, `status`, пагинация `page`; без полнотекстового поиска), `GET /documents/{id}`.
+- `backend/app/routers/analytics.py` — endpoint'ы `GET /analytics/summary`, `GET /analytics/timeseries?interval=day|week` (без `{section}` в пути) с агрегацией по датам.
 - `backend/app/routers/crawl.py` — endpoint `GET /crawl/status` для статуса текущего обхода.
 - `backend/app/schemas/` — Pydantic-схемы для валидации request/response.
 
@@ -115,7 +116,7 @@ docker compose up --build
   - `db`: PostgreSQL 16, инициализация schema через `backend/db/models.py` (SQLAlchemy создаёт таблицы на старт).
   - `api`: FastAPI приложение, слушает на порту 8000, требует `X-API-Key` в заголовках.
   - `worker`: фоновый процесс, запускает `backend/worker/loop.py`.
-- `backend/Dockerfile` — многоэтапный build: устанавливает зависимости, копирует код, запускает приложение.
+- `backend/Dockerfile` — однослойный (single-stage) build на `python:3.12-slim`: устанавливает зависимости, копирует код, запускает приложение.
 - `.env.example` — шаблон переменных окружения.
 
 **Обход двухуровневый и ленивый:** список → карточки документов; каждая обработанная list-страница сама добавляет в очередь только следующую страницу своей пагинации, а не все сразу. Раздел сайта (`section`: `npa`/`kdrp`/`arv`/`withdraw`) хранится в `crawl_queue` в момент постановки в очередь, а не выводится из URL документа — карточки всех разделов доступны по одному и тому же маршруту `/npa/view?id=...`, и раздел виден только на списочной странице, откуда документ был обнаружен.

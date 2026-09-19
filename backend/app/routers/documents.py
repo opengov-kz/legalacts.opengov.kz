@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.deps import get_db, require_api_key
 from app.schemas.documents import DocumentDetailOut, DocumentListItemOut
@@ -17,10 +17,10 @@ PAGE_SIZE = 20
 def list_documents(
     section: Optional[str] = None,
     status_filter: Optional[str] = Query(default=None, alias="status"),
-    page: int = 1,
+    page: int = Query(default=1, ge=1),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Document)
+    stmt = select(Document).options(defer(Document.raw_html_ru), defer(Document.raw_html_kk))
     if section is not None:
         stmt = stmt.where(Document.section == section)
     if status_filter is not None:
@@ -31,7 +31,11 @@ def list_documents(
 
 @router.get("/{document_id}", response_model=DocumentDetailOut)
 def get_document(document_id: int, db: Session = Depends(get_db)):
-    document = db.get(Document, document_id)
+    document = db.execute(
+        select(Document)
+        .where(Document.id == document_id)
+        .options(defer(Document.raw_html_ru), defer(Document.raw_html_kk))
+    ).scalar_one_or_none()
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document

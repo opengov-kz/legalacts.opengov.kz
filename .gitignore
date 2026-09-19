@@ -13,5 +13,8 @@ venv/
 # Собранные данные
 *.db
 
+# Реальные секреты (API_KEY, POSTGRES_PASSWORD) — не коммитить
+.env
+
 # Изолированные worktree для агентской разработки
 .worktrees/
