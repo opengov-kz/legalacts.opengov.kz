@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.config import Settings
-from app.routers import documents
+from app.routers import analytics, documents
 from db.session import create_engine_and_session_factory
 
 
@@ -14,6 +14,7 @@ def create_app(settings=None) -> FastAPI:
     app.state.session_factory = session_factory
 
     app.include_router(documents.router)
+    app.include_router(analytics.router)
 
     @app.get("/health")
     def health():
