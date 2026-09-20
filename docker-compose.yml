@@ -38,5 +38,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      FASTAPI_BASE_URL: http://api:8000
+      API_KEY: ${API_KEY}
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   pgdata:
