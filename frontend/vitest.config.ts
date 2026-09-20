@@ -2,7 +2,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react()] as any,
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
@@ -11,4 +11,4 @@ export default defineConfig({
   resolve: {
     alias: { "@": __dirname },
   },
-} as any);
+});
