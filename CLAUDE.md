@@ -31,12 +31,23 @@ Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`
 docker compose up --build
 ```
 
-Это спинит три сервиса:
+Это спинит четыре сервиса:
 - `db`: PostgreSQL 16 (слушает на `localhost:5432`)
 - `api`: FastAPI приложение (на `localhost:8000`, требует `X-API-Key` в заголовках)
 - `worker`: фоновый worker, запускающий скрейпер по расписанию
+- `frontend`: Next.js фронтенд (на `localhost:3000`)
 
 Env-переменные в `.env.example`. Перед `docker compose up` файл `.env` ОБЯЗАТЕЛЕН (скопировать из `.env.example` и заполнить) — у `${VAR}`-подстановок в `docker-compose.yml` нет значений по умолчанию, и без `.env` `POSTGRES_DB`/`POSTGRES_USER`/и т.д. резолвятся в пустые строки, из-за чего `db` не стартует.
+
+Фронтенд (`frontend/`) — Next.js 14 (App Router) + TypeScript. Для локальной разработки:
+
+```bash
+cd frontend
+npm install
+FASTAPI_BASE_URL=http://localhost:8000 API_KEY=<значение из .env> npm run dev
+```
+
+Слушает на `http://localhost:3000`; `/` редиректит на `/ru/documents`. Тесты: `cd frontend && npm test`. Типы: `npm run typecheck`.
 
 ## Commands
 
@@ -81,6 +92,8 @@ cd ..
 docker compose up --build
 ```
 
+Теперь также запускает `frontend` (порт 3000) — см. `## Setup` выше.
+
 Линтера в проекте нет.
 
 ## Architecture
@@ -118,6 +131,15 @@ docker compose up --build
   - `worker`: фоновый процесс, запускает `backend/worker/loop.py`.
 - `backend/Dockerfile` — однослойный (single-stage) build на `python:3.12-slim`: устанавливает зависимости, копирует код, запускает приложение.
 - `.env.example` — шаблон переменных окружения.
+
+**Фронтенд (`frontend/`):**
+- `frontend/app/[locale]/*` — публичные страницы: `documents` (каталог с фильтром по разделу и пагинацией), `documents/[id]` (детальная страница документа + комментарии), `analytics` (графики по разделам/статусам + динамика во времени), `crawl-status` (статус очереди обхода и последние ошибки). Локаль (`ru`/`kk`) всегда в пути; `/` редиректит на `/ru/documents`.
+- `frontend/lib/api-client.ts` — единственный модуль, которому разрешено читать `FASTAPI_BASE_URL`/`API_KEY` и обращаться к FastAPI напрямую (`getDocuments`, `getDocument`, `getAnalyticsSummary`, `getAnalyticsTimeseries`, `getCrawlStatus`); Server Component-страницы вызывают эти функции напрямую (in-process), без self-HTTP.
+- `frontend/app/api/*` — BFF route handlers, обёртки над теми же функциями `lib/api-client.ts`; в v1 самими страницами не используются (задел на будущий client-side fetching).
+- `frontend/lib/i18n/*` — `locales.ts` (список локалей, `isLocale`, `DEFAULT_LOCALE`), `dictionaries.ts` (статические ru/kk словари UI-строк, без i18n-фреймворка).
+- `frontend/components/ui/*` — базовые примитивы в духе shadcn/ui (Button, Card, Table, Badge, Select) поверх Tailwind + Radix.
+- `frontend/components/{documents,analytics,crawl,nav}/*` — презентационные компоненты страниц (таблицы документов, фильтры, пагинация, графики Recharts с обязательной HTML-таблицей рядом, шапка сайта с переключателем языка).
+- `frontend/Dockerfile` — двухстадийная (multi-stage) сборка на `node:20-slim`.
 
 **Обход двухуровневый и ленивый:** список → карточки документов; каждая обработанная list-страница сама добавляет в очередь только следующую страницу своей пагинации, а не все сразу. Раздел сайта (`section`: `npa`/`kdrp`/`arv`/`withdraw`) хранится в `crawl_queue` в момент постановки в очередь, а не выводится из URL документа — карточки всех разделов доступны по одному и тому же маршруту `/npa/view?id=...`, и раздел виден только на списочной странице, откуда документ был обнаружен.
 
