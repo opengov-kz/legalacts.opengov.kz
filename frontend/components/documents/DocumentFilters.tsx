@@ -15,7 +15,6 @@ export function DocumentFilters({
 }: {
   locale: Locale;
   section: string | undefined;
-  status: string | undefined;
   dict: Dictionary;
 }) {
   return (

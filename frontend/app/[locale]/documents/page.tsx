@@ -6,6 +6,8 @@ import { DocumentFilters } from "@/components/documents/DocumentFilters";
 import { DocumentTable } from "@/components/documents/DocumentTable";
 import { Pagination } from "@/components/documents/Pagination";
 
+// Must match backend/app/routers/documents.py's page size — the API returns a plain
+// array with no total count, so a full page is the only signal that more pages exist.
 const PAGE_SIZE = 20;
 
 function parsePage(raw: string | undefined): number {
@@ -34,10 +36,9 @@ export default async function DocumentsPage({
   return (
     <div>
       <h1 className="pb-4 text-2xl font-semibold">{dict.documents.title}</h1>
-      <DocumentFilters locale={locale} section={searchParams.section} status={searchParams.status} dict={dict} />
+      <DocumentFilters locale={locale} section={searchParams.section} dict={dict} />
       <DocumentTable documents={documents} locale={locale} dict={dict} />
       <Pagination
-        locale={locale}
         page={page}
         hasNextPage={documents.length === PAGE_SIZE}
         basePath={`/${locale}/documents`}

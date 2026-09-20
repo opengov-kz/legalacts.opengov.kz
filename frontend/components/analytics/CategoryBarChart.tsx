@@ -36,25 +36,27 @@ export function CategoryBarChart({
 
   return (
     <div>
-      <BarChart width={480} height={260} data={slots} margin={{ top: 16, right: 8, left: 0, bottom: 8 }}>
-        <CartesianGrid stroke="var(--gridline)" vertical={false} />
-        <XAxis dataKey="label" stroke="var(--ink-muted)" fontSize={12} />
-        <YAxis stroke="var(--ink-muted)" fontSize={12} allowDecimals={false} />
-        <Tooltip contentStyle={{ background: "var(--surface-card)", border: "1px solid var(--gridline)" }} />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-          <LabelList dataKey="count" position="top" fill="var(--ink-primary)" fontSize={12} />
-          {slots.map((slot, index) => (
-            <Cell
-              key={slot.label}
-              fill={
-                slot.label === otherLabel
-                  ? OTHER_COLOR_LIGHT
-                  : CATEGORICAL_LIGHT[index % CATEGORICAL_LIGHT.length]
-              }
-            />
-          ))}
-        </Bar>
-      </BarChart>
+      <div className="overflow-x-auto">
+        <BarChart width={480} height={260} data={slots} margin={{ top: 16, right: 8, left: 0, bottom: 8 }}>
+          <CartesianGrid stroke="var(--gridline)" vertical={false} />
+          <XAxis dataKey="label" stroke="var(--ink-muted)" fontSize={12} />
+          <YAxis stroke="var(--ink-muted)" fontSize={12} allowDecimals={false} />
+          <Tooltip contentStyle={{ background: "var(--surface-card)", border: "1px solid var(--gridline)" }} />
+          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+            <LabelList dataKey="count" position="top" fill="var(--ink-primary)" fontSize={12} />
+            {slots.map((slot, index) => (
+              <Cell
+                key={`${slot.label}-${index}`}
+                fill={
+                  slot.label === otherLabel
+                    ? OTHER_COLOR_LIGHT
+                    : CATEGORICAL_LIGHT[index % CATEGORICAL_LIGHT.length]
+                }
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </div>
 
       <Table aria-label={tableCaption} className="mt-2">
         <TableHeader>
@@ -64,8 +66,8 @@ export function CategoryBarChart({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {slots.map((slot) => (
-            <TableRow key={slot.label}>
+          {slots.map((slot, index) => (
+            <TableRow key={`${slot.label}-${index}`}>
               <TableCell>{slot.label}</TableCell>
               <TableCell>{slot.count}</TableCell>
             </TableRow>

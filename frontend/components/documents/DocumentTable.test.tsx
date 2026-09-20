@@ -48,4 +48,16 @@ describe("DocumentTable", () => {
     render(<DocumentTable documents={[]} locale="ru" dict={getDictionary("ru")} />);
     expect(screen.getByText("Документы не найдены")).toBeInTheDocument();
   });
+
+  it("falls back to a placeholder title when both title_ru and title_kk are null", () => {
+    render(
+      <DocumentTable
+        documents={[{ ...doc, title_ru: null, title_kk: null }]}
+        locale="ru"
+        dict={getDictionary("ru")}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Без названия" })).toBeInTheDocument();
+  });
 });

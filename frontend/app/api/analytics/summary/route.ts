@@ -6,6 +6,7 @@ export async function GET() {
     const summary = await getAnalyticsSummary();
     return NextResponse.json(summary);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error("GET /api/analytics/summary failed:", error);
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

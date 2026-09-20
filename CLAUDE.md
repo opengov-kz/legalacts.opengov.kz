@@ -51,7 +51,7 @@ FASTAPI_BASE_URL=http://localhost:8000 API_KEY=<значение из .env> npm 
 
 ## Commands
 
-Запускаются из папки `backend/`.
+Ниже — backend-команды, запускаются из папки `backend/`. Фронтенд-команды (`npm test`, `npm run typecheck`, `npm run dev`) — см. `## Setup` выше, запускаются из `frontend/`.
 
 **Тесты (все):**
 
@@ -133,13 +133,17 @@ docker compose up --build
 - `.env.example` — шаблон переменных окружения.
 
 **Фронтенд (`frontend/`):**
-- `frontend/app/[locale]/*` — публичные страницы: `documents` (каталог с фильтром по разделу и пагинацией), `documents/[id]` (детальная страница документа + комментарии), `analytics` (графики по разделам/статусам + динамика во времени), `crawl-status` (статус очереди обхода и последние ошибки). Локаль (`ru`/`kk`) всегда в пути; `/` редиректит на `/ru/documents`.
-- `frontend/lib/api-client.ts` — единственный модуль, которому разрешено читать `FASTAPI_BASE_URL`/`API_KEY` и обращаться к FastAPI напрямую (`getDocuments`, `getDocument`, `getAnalyticsSummary`, `getAnalyticsTimeseries`, `getCrawlStatus`); Server Component-страницы вызывают эти функции напрямую (in-process), без self-HTTP.
+- `frontend/app/page.tsx` — редиректит `/` на `/ru/documents`; помечен `export const dynamic = "force-dynamic"`, иначе Next.js кеширует эту полностью статическую страницу и отдаёт `307` без заголовка `Location` (редирект срабатывает только через клиентский JS, curl/поисковики/health-чеки видят пустой редирект).
+- `frontend/app/layout.tsx` — единственный файл, где разрешено рендерить `<html>`/`<body>` (ограничение Next.js App Router: ровно один layout в дереве может это делать, и это должен быть настоящий корень, не видящий параметр `[locale]`). `<html lang>` там статичный (`"ru"`); для `kk`-страниц реальный атрибут `lang` синхронизирует `useEffect` в `SiteHeader.tsx` (`document.documentElement.lang = locale`) — стандартный обходной путь для App Router, где у корневого layout нет доступа к динамическим сегментам. `frontend/app/global-error.tsx` — отдельный файл с собственным `<html>`/`<body>`, ловит необработанные ошибки в самом `app/layout.tsx`.
+- `frontend/app/[locale]/layout.tsx` — обёртка с шапкой сайта (`SiteHeader`) под корневым layout; здесь же валидация локали (`isLocale`/`notFound()`).
+- `frontend/app/[locale]/not-found.tsx` — определяет локаль из `usePathname()` (не из `params` — Next.js не передаёт их в `not-found.tsx`), поэтому 404 показывается на языке текущего URL, а не всегда по-русски.
+- `frontend/app/[locale]/*` — публичные страницы: `documents` (каталог с фильтром по разделу и пагинацией), `documents/[id]` (детальная страница документа + комментарии), `analytics` (графики по разделам/статусам + динамика во времени), `crawl-status` (статус очереди обхода и последние ошибки). Локаль (`ru`/`kk`) всегда в пути.
+- `frontend/lib/api-client.ts` — единственный модуль, которому разрешено читать `FASTAPI_BASE_URL`/`API_KEY` и обращаться к FastAPI напрямую (`getDocuments`, `getDocument`, `getAnalyticsSummary`, `getAnalyticsTimeseries`, `getCrawlStatus`); Server Component-страницы вызывают эти функции напрямую (in-process), без self-HTTP. BFF-роуты (`app/api/*`) логируют реальную ошибку через `console.error` на сервере и отдают наружу общее сообщение — не пробрасывают внутренний текст ошибки неавторизованным клиентам.
 - `frontend/app/api/*` — BFF route handlers, обёртки над теми же функциями `lib/api-client.ts`; в v1 самими страницами не используются (задел на будущий client-side fetching).
 - `frontend/lib/i18n/*` — `locales.ts` (список локалей, `isLocale`, `DEFAULT_LOCALE`), `dictionaries.ts` (статические ru/kk словари UI-строк, без i18n-фреймворка).
-- `frontend/components/ui/*` — базовые примитивы в духе shadcn/ui (Button, Card, Table, Badge, Select) поверх Tailwind + Radix.
+- `frontend/components/ui/*` — базовые примитивы в духе shadcn/ui (Button, Table, Badge) поверх Tailwind + Radix.
 - `frontend/components/{documents,analytics,crawl,nav}/*` — презентационные компоненты страниц (таблицы документов, фильтры, пагинация, графики Recharts с обязательной HTML-таблицей рядом, шапка сайта с переключателем языка).
-- `frontend/Dockerfile` — двухстадийная (multi-stage) сборка на `node:20-slim`.
+- `frontend/Dockerfile` — двухстадийная (multi-stage) сборка на `node:20-slim` с `output: "standalone"` (`next.config.js`) — рантайм-стадия не ставит `node_modules` заново, копирует только `.next/standalone` + `.next/static` + `public`; запускается от непривилегированного пользователя `node`.
 
 **Обход двухуровневый и ленивый:** список → карточки документов; каждая обработанная list-страница сама добавляет в очередь только следующую страницу своей пагинации, а не все сразу. Раздел сайта (`section`: `npa`/`kdrp`/`arv`/`withdraw`) хранится в `crawl_queue` в момент постановки в очередь, а не выводится из URL документа — карточки всех разделов доступны по одному и тому же маршруту `/npa/view?id=...`, и раздел виден только на списочной странице, откуда документ был обнаружен.
 

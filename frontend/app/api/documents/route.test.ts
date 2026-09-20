@@ -20,14 +20,20 @@ describe("GET /api/documents", () => {
     expect(await response.json()).toEqual([{ id: 1 }]);
   });
 
-  it("returns 500 with an error body when getDocuments throws", async () => {
+  it("returns 500 with a generic error body when getDocuments throws, logging the real error server-side", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(getDocuments).mockRejectedValue(new Error("upstream down"));
 
     const request = new NextRequest("http://localhost:3000/api/documents");
     const response = await GET(request);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "upstream down" });
+    expect(await response.json()).toEqual({ error: "Внутренняя ошибка сервера" });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "GET /api/documents failed:",
+      expect.objectContaining({ message: "upstream down" }),
+    );
+    consoleErrorSpy.mockRestore();
   });
 
   it("defaults page to 1 when the page param is absent", async () => {

@@ -109,4 +109,10 @@ describe("api-client", () => {
 
     await expect(getCrawlStatus()).rejects.toThrow(/503/);
   });
+
+  it("propagates a network failure (fetch rejecting) as a thrown error", async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error("fetch failed"));
+
+    await expect(getDocuments({})).rejects.toThrow("fetch failed");
+  });
 });

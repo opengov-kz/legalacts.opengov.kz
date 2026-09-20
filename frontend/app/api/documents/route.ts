@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(documents);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error("GET /api/documents failed:", error);
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

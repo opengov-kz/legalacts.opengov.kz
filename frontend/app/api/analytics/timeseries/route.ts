@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const points = await getAnalyticsTimeseries(interval);
     return NextResponse.json(points);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error("GET /api/analytics/timeseries failed:", error);
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

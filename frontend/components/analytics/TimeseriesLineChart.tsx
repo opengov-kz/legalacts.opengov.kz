@@ -19,13 +19,15 @@ export function TimeseriesLineChart({
 }) {
   return (
     <div>
-      <LineChart width={480} height={260} data={points} margin={{ top: 16, right: 8, left: 0, bottom: 8 }}>
-        <CartesianGrid stroke="var(--gridline)" vertical={false} />
-        <XAxis dataKey="bucket" stroke="var(--ink-muted)" fontSize={12} tickFormatter={(v) => String(v).slice(0, 10)} />
-        <YAxis stroke="var(--ink-muted)" fontSize={12} allowDecimals={false} />
-        <Tooltip contentStyle={{ background: "var(--surface-card)", border: "1px solid var(--gridline)" }} />
-        <Line type="monotone" dataKey="count" stroke={SERIES_COLOR_LIGHT} strokeWidth={2} dot={{ r: 4 }} />
-      </LineChart>
+      <div className="overflow-x-auto">
+        <LineChart width={480} height={260} data={points} margin={{ top: 16, right: 8, left: 0, bottom: 8 }}>
+          <CartesianGrid stroke="var(--gridline)" vertical={false} />
+          <XAxis dataKey="bucket" stroke="var(--ink-muted)" fontSize={12} tickFormatter={(v) => String(v).slice(0, 10)} />
+          <YAxis stroke="var(--ink-muted)" fontSize={12} allowDecimals={false} />
+          <Tooltip contentStyle={{ background: "var(--surface-card)", border: "1px solid var(--gridline)" }} />
+          <Line type="monotone" dataKey="count" stroke={SERIES_COLOR_LIGHT} strokeWidth={2} dot={{ r: 4 }} />
+        </LineChart>
+      </div>
 
       <Table aria-label={tableCaption} className="mt-2">
         <TableHeader>

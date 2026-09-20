@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
-import type { Locale } from "@/lib/i18n/locales";
 
 function hrefForPage(basePath: string, searchParams: Record<string, string>, page: number): string {
   const query = new URLSearchParams(searchParams);
@@ -11,14 +10,12 @@ function hrefForPage(basePath: string, searchParams: Record<string, string>, pag
 }
 
 export function Pagination({
-  locale: _locale,
   page,
   hasNextPage,
   basePath,
   searchParams,
   dict,
 }: {
-  locale: Locale;
   page: number;
   hasNextPage: boolean;
   basePath: string;

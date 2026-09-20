@@ -9,6 +9,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     }
     return NextResponse.json(document);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error(`GET /api/documents/${params.id} failed:`, error);
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

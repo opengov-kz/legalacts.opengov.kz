@@ -6,6 +6,7 @@ export async function GET() {
     const status = await getCrawlStatus();
     return NextResponse.json(status);
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error("GET /api/crawl/status failed:", error);
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }

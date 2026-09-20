@@ -31,7 +31,8 @@ describe("GET /api/documents/[id]", () => {
     expect(response.status).toBe(404);
   });
 
-  it("returns 500 when getDocument throws", async () => {
+  it("returns 500 with a generic error body when getDocument throws, logging server-side", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(getDocument).mockRejectedValue(new Error("upstream down"));
 
     const response = await GET(new NextRequest("http://localhost:3000/api/documents/1"), {
@@ -39,5 +40,8 @@ describe("GET /api/documents/[id]", () => {
     });
 
     expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Внутренняя ошибка сервера" });
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

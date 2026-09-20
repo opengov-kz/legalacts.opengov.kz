@@ -18,6 +18,7 @@ export interface Dictionary {
     createdDate: string;
     discussionEndDate: string;
     reactions: string;
+    untitled: string;
   };
   analytics: {
     title: string;
@@ -27,7 +28,6 @@ export interface Dictionary {
     day: string;
     week: string;
     other: string;
-    tableView: string;
     count: string;
     date: string;
   };
@@ -71,6 +71,7 @@ const ru: Dictionary = {
     createdDate: "Дата создания",
     discussionEndDate: "Дата окончания обсуждения",
     reactions: "Лайки / дизлайки",
+    untitled: "Без названия",
   },
   analytics: {
     title: "Аналитика",
@@ -80,7 +81,6 @@ const ru: Dictionary = {
     day: "По дням",
     week: "По неделям",
     other: "Прочее",
-    tableView: "Таблица",
     count: "Количество",
     date: "Дата",
   },
@@ -124,6 +124,7 @@ const kk: Dictionary = {
     createdDate: "Құрылған күні",
     discussionEndDate: "Талқылау аяқталу күні",
     reactions: "Лайк / дизлайк",
+    untitled: "Атауы жоқ",
   },
   analytics: {
     title: "Аналитика",
@@ -133,7 +134,6 @@ const kk: Dictionary = {
     day: "Күн бойынша",
     week: "Апта бойынша",
     other: "Басқа",
-    tableView: "Кесте",
     count: "Саны",
     date: "Күн",
   },

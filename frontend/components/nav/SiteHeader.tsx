@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { getDictionary } from "@/lib/i18n/dictionaries";
@@ -12,6 +13,15 @@ export function SiteHeader({ locale }: { locale: Locale }) {
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const currentPath = qs ? `${pathname}?${qs}` : pathname;
+
+  // The root <html lang> is static (set once in app/layout.tsx) because Next.js's App
+  // Router only allows one layout in the tree to render <html>, and that must be the
+  // true root — it never receives the [locale] segment's params. Syncing it here after
+  // hydration is the standard workaround so kk pages still declare the correct language
+  // to screen readers and search engines.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   return (
     <header className="border-b border-gridline">

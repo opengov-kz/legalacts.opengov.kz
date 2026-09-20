@@ -5,7 +5,7 @@ import { DocumentFilters } from "./DocumentFilters";
 
 describe("DocumentFilters", () => {
   it("renders links for every known section, marking the active one, and preserves it when unfiltered", () => {
-    render(<DocumentFilters locale="ru" section={undefined} status={undefined} dict={getDictionary("ru")} />);
+    render(<DocumentFilters locale="ru" section={undefined} dict={getDictionary("ru")} />);
 
     const npaLink = screen.getByRole("link", { name: "npa" });
     expect(npaLink).toHaveAttribute("href", "/ru/documents?section=npa");
@@ -14,8 +14,8 @@ describe("DocumentFilters", () => {
     expect(allLink).toHaveAttribute("aria-current", "page");
   });
 
-  it("marks the currently selected section as active and clears status when switching sections", () => {
-    render(<DocumentFilters locale="ru" section="arv" status="Архив" dict={getDictionary("ru")} />);
+  it("marks the currently selected section as active", () => {
+    render(<DocumentFilters locale="ru" section="arv" dict={getDictionary("ru")} />);
 
     expect(screen.getByRole("link", { name: "arv" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "kdrp" })).toHaveAttribute("href", "/ru/documents?section=kdrp");

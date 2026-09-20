@@ -5,9 +5,9 @@ import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/locales";
 import type { DocumentListItem } from "@/types/api";
 
-function titleFor(doc: DocumentListItem, locale: Locale): string {
-  if (locale === "kk") return doc.title_kk ?? doc.title_ru ?? "";
-  return doc.title_ru ?? doc.title_kk ?? "";
+function titleFor(doc: DocumentListItem, locale: Locale, dict: Dictionary): string {
+  const title = locale === "kk" ? doc.title_kk ?? doc.title_ru : doc.title_ru ?? doc.title_kk;
+  return title ?? dict.documents.untitled;
 }
 
 export function DocumentTable({
@@ -37,7 +37,7 @@ export function DocumentTable({
           <TableRow key={doc.id}>
             <TableCell>
               <Link href={`/${locale}/documents/${doc.id}`} className="font-medium hover:underline">
-                {titleFor(doc, locale)}
+                {titleFor(doc, locale, dict)}
               </Link>
             </TableCell>
             <TableCell>

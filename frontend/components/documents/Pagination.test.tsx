@@ -7,7 +7,6 @@ describe("Pagination", () => {
   it("links next/prev preserving other query params, disables prev on page 1", () => {
     render(
       <Pagination
-        locale="ru"
         page={1}
         hasNextPage
         basePath="/ru/documents"
@@ -26,7 +25,6 @@ describe("Pagination", () => {
   it("disables next when hasNextPage is false", () => {
     render(
       <Pagination
-        locale="ru"
         page={3}
         hasNextPage={false}
         basePath="/ru/documents"
