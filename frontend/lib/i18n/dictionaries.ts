@@ -37,6 +37,9 @@ export interface Dictionary {
     pageType: string;
     status: string;
     count: string;
+    url: string;
+    error: string;
+    processedAt: string;
   };
   errors: {
     genericTitle: string;
@@ -84,6 +87,9 @@ const ru: Dictionary = {
     pageType: "Тип страницы",
     status: "Статус",
     count: "Количество",
+    url: "URL",
+    error: "Ошибка",
+    processedAt: "Обработано",
   },
   errors: {
     genericTitle: "Что-то пошло не так",
@@ -131,6 +137,9 @@ const kk: Dictionary = {
     pageType: "Бет түрі",
     status: "Мәртебе",
     count: "Саны",
+    url: "URL",
+    error: "Қате",
+    processedAt: "Өңделді",
   },
   errors: {
     genericTitle: "Бірдеңе дұрыс болмады",

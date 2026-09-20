@@ -11,10 +11,10 @@ export function CrawlErrorsTable({ errors, dict }: { errors: CrawlError[]; dict:
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>URL</TableHead>
+          <TableHead>{dict.crawlStatus.url}</TableHead>
           <TableHead>{dict.crawlStatus.pageType}</TableHead>
-          <TableHead>Error</TableHead>
-          <TableHead>Processed at</TableHead>
+          <TableHead>{dict.crawlStatus.error}</TableHead>
+          <TableHead>{dict.crawlStatus.processedAt}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
