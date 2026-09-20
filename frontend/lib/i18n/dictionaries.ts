@@ -25,6 +25,8 @@ export interface Dictionary {
     week: string;
     other: string;
     tableView: string;
+    count: string;
+    date: string;
   };
   crawlStatus: {
     title: string;
@@ -70,6 +72,8 @@ const ru: Dictionary = {
     week: "По неделям",
     other: "Прочее",
     tableView: "Таблица",
+    count: "Количество",
+    date: "Дата",
   },
   crawlStatus: {
     title: "Статус обхода",
@@ -115,6 +119,8 @@ const kk: Dictionary = {
     week: "Апта бойынша",
     other: "Басқа",
     tableView: "Кесте",
+    count: "Саны",
+    date: "Күн",
   },
   crawlStatus: {
     title: "Аралау мәртебесі",

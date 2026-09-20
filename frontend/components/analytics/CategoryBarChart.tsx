@@ -25,10 +25,12 @@ export function CategoryBarChart({
   data,
   otherLabel,
   tableCaption,
+  countLabel,
 }: {
   data: CategoryDatum[];
   otherLabel: string;
   tableCaption: string;
+  countLabel: string;
 }) {
   const slots = reduceToSlots(data, otherLabel);
 
@@ -58,7 +60,7 @@ export function CategoryBarChart({
         <TableHeader>
           <TableRow>
             <TableHead>{tableCaption}</TableHead>
-            <TableHead>Count</TableHead>
+            <TableHead>{countLabel}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

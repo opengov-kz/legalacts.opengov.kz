@@ -11,6 +11,8 @@ describe("TimeseriesLineChart", () => {
           { bucket: "2026-01-02T00:00:00+00:00", count: 5 },
         ]}
         tableCaption="Динамика"
+        bucketLabel="Дата"
+        countLabel="Количество"
       />,
     );
 

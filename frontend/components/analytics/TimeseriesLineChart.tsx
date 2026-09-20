@@ -9,9 +9,13 @@ const SERIES_COLOR_LIGHT = "#2a78d6";
 export function TimeseriesLineChart({
   points,
   tableCaption,
+  bucketLabel,
+  countLabel,
 }: {
   points: TimeseriesPoint[];
   tableCaption: string;
+  bucketLabel: string;
+  countLabel: string;
 }) {
   return (
     <div>
@@ -26,8 +30,8 @@ export function TimeseriesLineChart({
       <Table aria-label={tableCaption} className="mt-2">
         <TableHeader>
           <TableRow>
-            <TableHead>Bucket</TableHead>
-            <TableHead>Count</TableHead>
+            <TableHead>{bucketLabel}</TableHead>
+            <TableHead>{countLabel}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

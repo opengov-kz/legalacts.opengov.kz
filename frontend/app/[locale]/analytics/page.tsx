@@ -32,6 +32,7 @@ export default async function AnalyticsPage({
           data={summary.documents_by_section.map((s) => ({ label: s.section, count: s.count }))}
           otherLabel={dict.analytics.other}
           tableCaption={dict.analytics.bySection}
+          countLabel={dict.analytics.count}
         />
       </section>
 
@@ -41,12 +42,18 @@ export default async function AnalyticsPage({
           data={summary.documents_by_status.map((s) => ({ label: s.status ?? "—", count: s.count }))}
           otherLabel={dict.analytics.other}
           tableCaption={dict.analytics.byStatus}
+          countLabel={dict.analytics.count}
         />
       </section>
 
       <section>
         <h2 className="mb-2 text-lg font-semibold">{dict.analytics.timeseries}</h2>
-        <TimeseriesLineChart points={timeseries} tableCaption={dict.analytics.timeseries} />
+        <TimeseriesLineChart
+          points={timeseries}
+          tableCaption={dict.analytics.timeseries}
+          bucketLabel={dict.analytics.date}
+          countLabel={dict.analytics.count}
+        />
       </section>
     </div>
   );
