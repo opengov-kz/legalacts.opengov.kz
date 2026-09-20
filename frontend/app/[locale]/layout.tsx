@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { isLocale, type Locale } from "@/lib/i18n/locales";
 import { SiteHeader } from "@/components/nav/SiteHeader";
@@ -20,7 +21,9 @@ export default function LocaleLayout({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <SiteHeader locale={locale} />
+      <Suspense fallback={null}>
+        <SiteHeader locale={locale} />
+      </Suspense>
       <main className="px-4 py-6">{children}</main>
     </div>
   );
