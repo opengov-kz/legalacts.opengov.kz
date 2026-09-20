@@ -21,7 +21,7 @@ export function SiteHeader({ locale }: { locale: Locale }) {
           <Link href={`/${locale}/analytics`}>{dict.nav.analytics}</Link>
           <Link href={`/${locale}/crawl-status`}>{dict.nav.crawlStatus}</Link>
         </nav>
-        <LocaleSwitcher activeLocale={locale} currentPath={currentPath} />
+        <LocaleSwitcher activeLocale={locale} currentPath={currentPath} dict={dict} />
       </div>
     </header>
   );

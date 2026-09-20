@@ -1,7 +1,7 @@
 import type { Locale } from "./locales";
 
 export interface Dictionary {
-  nav: { documents: string; analytics: string; crawlStatus: string };
+  nav: { documents: string; analytics: string; crawlStatus: string; language: string };
   documents: {
     title: string;
     filterSection: string;
@@ -15,6 +15,9 @@ export interface Dictionary {
     pageOf: (page: number) => string;
     prevPage: string;
     nextPage: string;
+    createdDate: string;
+    discussionEndDate: string;
+    reactions: string;
   };
   analytics: {
     title: string;
@@ -51,7 +54,7 @@ export interface Dictionary {
 }
 
 const ru: Dictionary = {
-  nav: { documents: "Документы", analytics: "Аналитика", crawlStatus: "Статус обхода" },
+  nav: { documents: "Документы", analytics: "Аналитика", crawlStatus: "Статус обхода", language: "Язык" },
   documents: {
     title: "Документы",
     filterSection: "Раздел",
@@ -65,6 +68,9 @@ const ru: Dictionary = {
     pageOf: (page) => `Страница ${page}`,
     prevPage: "Назад",
     nextPage: "Вперёд",
+    createdDate: "Дата создания",
+    discussionEndDate: "Дата окончания обсуждения",
+    reactions: "Лайки / дизлайки",
   },
   analytics: {
     title: "Аналитика",
@@ -101,7 +107,7 @@ const ru: Dictionary = {
 };
 
 const kk: Dictionary = {
-  nav: { documents: "Құжаттар", analytics: "Аналитика", crawlStatus: "Аралау мәртебесі" },
+  nav: { documents: "Құжаттар", analytics: "Аналитика", crawlStatus: "Аралау мәртебесі", language: "Тіл" },
   documents: {
     title: "Құжаттар",
     filterSection: "Бөлім",
@@ -115,6 +121,9 @@ const kk: Dictionary = {
     pageOf: (page) => `${page}-бет`,
     prevPage: "Артқа",
     nextPage: "Алға",
+    createdDate: "Құрылған күні",
+    discussionEndDate: "Талқылау аяқталу күні",
+    reactions: "Лайк / дизлайк",
   },
   analytics: {
     title: "Аналитика",

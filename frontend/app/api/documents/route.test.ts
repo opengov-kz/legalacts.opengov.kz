@@ -29,4 +29,30 @@ describe("GET /api/documents", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "upstream down" });
   });
+
+  it("defaults page to 1 when the page param is absent", async () => {
+    vi.mocked(getDocuments).mockResolvedValue([{ id: 1 } as never]);
+
+    const request = new NextRequest("http://localhost:3000/api/documents");
+    await GET(request);
+
+    expect(getDocuments).toHaveBeenCalledWith({
+      section: undefined,
+      status: undefined,
+      page: 1,
+    });
+  });
+
+  it("clamps invalid page values (NaN, 0, negative) to 1", async () => {
+    vi.mocked(getDocuments).mockResolvedValue([{ id: 1 } as never]);
+
+    for (const rawPage of ["abc", "0", "-5"]) {
+      vi.mocked(getDocuments).mockClear();
+      const request = new NextRequest(`http://localhost:3000/api/documents?page=${rawPage}`);
+      await GET(request);
+      expect(getDocuments).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1 }),
+      );
+    }
+  });
 });

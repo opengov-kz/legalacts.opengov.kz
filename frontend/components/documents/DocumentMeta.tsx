@@ -32,11 +32,11 @@ export function DocumentMeta({
         )}
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-        <dt className="text-ink-muted">created_date</dt>
+        <dt className="text-ink-muted">{dict.documents.createdDate}</dt>
         <dd>{document.created_date ?? "—"}</dd>
-        <dt className="text-ink-muted">discussion_end_date</dt>
+        <dt className="text-ink-muted">{dict.documents.discussionEndDate}</dt>
         <dd>{document.discussion_end_date ?? "—"}</dd>
-        <dt className="text-ink-muted">likes / dislikes</dt>
+        <dt className="text-ink-muted">{dict.documents.reactions}</dt>
         <dd>
           {document.likes_count ?? 0} / {document.dislikes_count ?? 0}
         </dd>

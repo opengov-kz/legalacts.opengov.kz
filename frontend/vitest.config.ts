@@ -9,6 +9,9 @@ export default defineConfig({
     globals: false,
   },
   resolve: {
-    alias: { "@": __dirname },
+    alias: {
+      "@": __dirname,
+      "server-only": `${__dirname}/test/server-only-stub.ts`,
+    },
   },
 });

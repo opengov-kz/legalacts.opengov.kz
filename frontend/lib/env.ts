@@ -1,3 +1,5 @@
+import "server-only";
+
 export function getServerEnv() {
   const fastApiBaseUrl = process.env.FASTAPI_BASE_URL;
   if (!fastApiBaseUrl) {

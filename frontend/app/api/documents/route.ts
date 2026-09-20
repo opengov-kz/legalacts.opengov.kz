@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDocuments } from "@/lib/api-client";
 
+function parsePage(raw: string | undefined): number {
+  const n = Math.trunc(Number(raw ?? "1"));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const page = params.get("page");
@@ -9,7 +14,7 @@ export async function GET(request: NextRequest) {
     const documents = await getDocuments({
       section: params.get("section") ?? undefined,
       status: params.get("status") ?? undefined,
-      page: page ? Number(page) : undefined,
+      page: parsePage(page ?? undefined),
     });
     return NextResponse.json(documents);
   } catch (error) {

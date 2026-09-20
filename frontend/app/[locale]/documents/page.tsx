@@ -8,6 +8,11 @@ import { Pagination } from "@/components/documents/Pagination";
 
 const PAGE_SIZE = 20;
 
+function parsePage(raw: string | undefined): number {
+  const n = Math.trunc(Number(raw ?? "1"));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 export default async function DocumentsPage({
   params,
   searchParams,
@@ -19,7 +24,7 @@ export default async function DocumentsPage({
   const locale = params.locale as Locale;
   const dict = getDictionary(locale);
 
-  const page = Number(searchParams.page ?? "1");
+  const page = parsePage(searchParams.page);
   const documents = await getDocuments({
     section: searchParams.section,
     status: searchParams.status,
