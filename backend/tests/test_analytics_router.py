@@ -1,12 +1,16 @@
-from db.models import Comment, Document
+import datetime
+
+from db.models import Comment, LegalAct
 from db.session import create_engine_and_session_factory
 
+UTC = datetime.timezone.utc
 
-def _seed(database_url, documents, comments=()):
+
+def _seed(database_url, acts, comments=()):
     _, SessionLocal = create_engine_and_session_factory(database_url)
     session = SessionLocal()
-    for doc in documents:
-        session.add(Document(**doc))
+    for act in acts:
+        session.add(LegalAct(**act))
     session.commit()
     for comment in comments:
         session.add(Comment(**comment))
@@ -17,11 +21,14 @@ def _seed(database_url, documents, comments=()):
 def test_analytics_summary_counts_by_section_and_status(database_url, api_client):
     _seed(database_url, [
         dict(external_id=1, section="npa", url="u1", status="active",
-             first_seen_at="2026-09-01T00:00:00+00:00", last_checked_at="2026-09-01T00:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 1, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 1, tzinfo=UTC)),
         dict(external_id=2, section="npa", url="u2", status="archived",
-             first_seen_at="2026-09-02T00:00:00+00:00", last_checked_at="2026-09-02T00:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 2, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 2, tzinfo=UTC)),
         dict(external_id=3, section="arv", url="u3", status="active",
-             first_seen_at="2026-09-03T00:00:00+00:00", last_checked_at="2026-09-03T00:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 3, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 3, tzinfo=UTC)),
     ])
 
     response = api_client.get("/analytics/summary")
@@ -36,11 +43,14 @@ def test_analytics_summary_counts_by_section_and_status(database_url, api_client
 def test_analytics_timeseries_buckets_by_day(database_url, api_client):
     _seed(database_url, [
         dict(external_id=1, section="npa", url="u1",
-             first_seen_at="2026-09-01T10:00:00+00:00", last_checked_at="2026-09-01T10:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 1, 10, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 1, 10, tzinfo=UTC)),
         dict(external_id=2, section="npa", url="u2",
-             first_seen_at="2026-09-01T18:00:00+00:00", last_checked_at="2026-09-01T18:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 1, 18, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 1, 18, tzinfo=UTC)),
         dict(external_id=3, section="npa", url="u3",
-             first_seen_at="2026-09-02T09:00:00+00:00", last_checked_at="2026-09-02T09:00:00+00:00"),
+             first_seen_at=datetime.datetime(2026, 9, 2, 9, tzinfo=UTC),
+             last_checked_at=datetime.datetime(2026, 9, 2, 9, tzinfo=UTC)),
     ])
 
     response = api_client.get("/analytics/timeseries", params={"interval": "day"})

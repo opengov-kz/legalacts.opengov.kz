@@ -8,8 +8,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("API_KEY", "test-key-placeholder")
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from testcontainers.postgres import PostgresContainer
 
@@ -17,7 +19,21 @@ from testcontainers.postgres import PostgresContainer
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from db.models import Base  # noqa: E402
+ALEMBIC_INI = project_root / "alembic.ini"
+
+
+def _reset_schema(url):
+    engine = create_engine(url, future=True)
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+    engine.dispose()
+
+
+def _run_migrations(url):
+    os.environ["DATABASE_URL"] = url
+    cfg = Config(str(ALEMBIC_INI))
+    command.upgrade(cfg, "head")
 
 
 @pytest.fixture(scope="session")
@@ -29,23 +45,20 @@ def postgres_container():
 @pytest.fixture
 def database_url(postgres_container):
     url = postgres_container.get_connection_url()
-    engine = create_engine(url, future=True)
-    Base.metadata.drop_all(engine)
-    engine.dispose()
+    _reset_schema(url)
+    _run_migrations(url)
     return url
 
 
 @pytest.fixture
-def pg_engine(postgres_container):
-    engine = create_engine(postgres_container.get_connection_url(), future=True)
-    Base.metadata.drop_all(engine)
+def pg_engine(database_url):
+    engine = create_engine(database_url, future=True)
     yield engine
     engine.dispose()
 
 
 @pytest.fixture
 def db_session(pg_engine):
-    Base.metadata.create_all(pg_engine)
     SessionLocal = sessionmaker(bind=pg_engine, future=True)
     session = SessionLocal()
     yield session

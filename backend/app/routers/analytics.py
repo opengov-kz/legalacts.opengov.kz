@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import TIMESTAMP, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, require_api_key
 from app.schemas.analytics import AnalyticsSummaryOut, SectionCount, StatusCount, TimeseriesPoint
-from db.models import Comment, Document
+from db.models import Comment, LegalAct
 
 router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(require_api_key)])
 
@@ -12,10 +12,10 @@ router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depend
 @router.get("/summary", response_model=AnalyticsSummaryOut)
 def analytics_summary(db: Session = Depends(get_db)):
     by_section = db.execute(
-        select(Document.section, func.count(Document.id)).group_by(Document.section)
+        select(LegalAct.section, func.count(LegalAct.id)).group_by(LegalAct.section)
     ).all()
     by_status = db.execute(
-        select(Document.status, func.count(Document.id)).group_by(Document.status)
+        select(LegalAct.status, func.count(LegalAct.id)).group_by(LegalAct.status)
     ).all()
     total_comments = db.execute(select(func.count(Comment.id))).scalar_one()
 
@@ -32,9 +32,9 @@ def analytics_timeseries(interval: str = "day", db: Session = Depends(get_db)):
     if interval not in {"day", "week"}:
         raise HTTPException(status_code=400, detail="interval must be 'day' or 'week'")
 
-    bucket = func.date_trunc(interval, Document.first_seen_at.cast(TIMESTAMP(timezone=True)))
+    bucket = func.date_trunc(interval, LegalAct.first_seen_at)
     stmt = (
-        select(bucket.label("bucket"), func.count(Document.id))
+        select(bucket.label("bucket"), func.count(LegalAct.id))
         .group_by("bucket")
         .order_by("bucket")
     )

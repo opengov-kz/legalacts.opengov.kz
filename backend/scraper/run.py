@@ -15,6 +15,7 @@ USER_AGENT = (
     "contact: k.nefyodov@qbs.kz)"
 )
 STALE_AFTER_DAYS = 7
+DEFAULT_COMMENT_CHANNEL = 6  # вкладка «Комментарий» (typeComment=6)
 
 SEED_LIST_URLS = [
     ("npa", f"{BASE_URL}/list"),
@@ -26,12 +27,12 @@ SEED_LIST_URLS = [
 ]
 
 
-def now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def now():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def seed_queue(session):
-    discovered = now_iso()
+    discovered = now()
     for section, url in SEED_LIST_URLS:
         queue.enqueue(session, url, "list", discovered, section=section)
 
@@ -54,7 +55,7 @@ def process_list_entry(session, fetcher, url, section="npa"):
         return
     html = response.text
 
-    discovered = now_iso()
+    discovered = now()
     for card in list_page.parse_list_page(html):
         queue.enqueue(session, card["url"], "document", discovered, section=section)
 
@@ -88,9 +89,9 @@ def process_document_entry(session, fetcher, url, section="npa"):
     external_id = int(dict(parse_qsl(urlsplit(url).query))["id"])
     parsed_comments = comments_parser.parse_comments(ru_html)
 
-    timestamp = now_iso()
-    document_id = store.upsert_document(session, external_id, section, url, fields, timestamp)
-    store.upsert_comments(session, document_id, parsed_comments, timestamp)
+    timestamp = now()
+    legal_act_id = store.upsert_legal_act(session, external_id, section, url, fields, timestamp)
+    store.upsert_comments(session, legal_act_id, parsed_comments, DEFAULT_COMMENT_CHANNEL, timestamp)
 
 
 def run(database_url, limit=None):
@@ -104,14 +105,12 @@ def run(database_url, limit=None):
     if not has_pending:
         seed_queue(session)
 
-    stale_threshold = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(days=STALE_AFTER_DAYS)
-    ).isoformat()
+    stale_threshold = now() - datetime.timedelta(days=STALE_AFTER_DAYS)
     queue.requeue_stale_documents(session, stale_threshold)
     queue.requeue_stale_lists(session, stale_threshold)
 
     fetcher = Fetcher(USER_AGENT)
+    fetcher.set_language("ru")
     processed = 0
 
     while limit is None or processed < limit:
@@ -120,10 +119,10 @@ def run(database_url, limit=None):
             section = queue.section_for(session, list_url) or "npa"
             try:
                 process_list_entry(session, fetcher, list_url, section=section)
-                queue.mark_done(session, list_url, now_iso())
+                queue.mark_done(session, list_url, now())
             except Exception as exc:
                 session.rollback()
-                queue.mark_error(session, list_url, str(exc), now_iso())
+                queue.mark_error(session, list_url, str(exc), now())
             processed += 1
             continue
 
@@ -132,10 +131,10 @@ def run(database_url, limit=None):
             section = queue.section_for(session, document_url) or "npa"
             try:
                 process_document_entry(session, fetcher, document_url, section=section)
-                queue.mark_done(session, document_url, now_iso())
+                queue.mark_done(session, document_url, now())
             except Exception as exc:
                 session.rollback()
-                queue.mark_error(session, document_url, str(exc), now_iso())
+                queue.mark_error(session, document_url, str(exc), now())
             processed += 1
             continue
 

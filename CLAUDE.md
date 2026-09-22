@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Реализована полная архитектура: Python-скрипт резюмируемо обходит портал `legalacts.egov.kz` (документы + обсуждения с комментариями), сохраняет результат в PostgreSQL-базу через SQLAlchemy ORM, и предоставляет асинхронный FastAPI read API с endpoint'ами для документов, аналитики и статуса обхода. Весь стек протестирован (58/58 backend tests passed) и развёртывается через Docker Compose.
+Реализована полная архитектура: Python-скрипт резюмируемо обходит портал `legalacts.egov.kz` (документы + обсуждения с комментариями), сохраняет результат в PostgreSQL-базу через SQLAlchemy ORM, и предоставляет асинхронный FastAPI read API с endpoint'ами для документов, аналитики и статуса обхода. Весь стек протестирован (69/69 backend tests passed) и развёртывается через Docker Compose.
 
 Исходная спецификация скрейпера: `docs/superpowers/specs/2026-09-15-legalacts-scraper-design.md`.
 Спецификация backend-архитектуры (Postgres + SQLAlchemy + FastAPI): `docs/superpowers/specs/2026-09-18-backend-postgres-fastapi-design.md`.
@@ -22,7 +22,11 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt   # Linux/macOS: .venv/bin/pip install -r requirements.txt
 ```
 
-Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`; backend теперь рассчитан на запуск внутри контейнера. Основные зависимости: `requests`, `beautifulsoup4` + `lxml`, `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `pytest`, `testcontainers`.
+Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`; backend теперь рассчитан на запуск внутри контейнера. Основные зависимости: `requests`, `beautifulsoup4` + `lxml`, `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `psycopg2-binary`, `pytest`, `testcontainers`.
+
+Схема БД версионируется через Alembic (`backend/alembic/`); `Base.metadata.create_all()` для прод/dev пути больше не используется — актуальную схему создаёт только `alembic upgrade head` (внутри Docker Compose это отдельный one-shot сервис `migrate`, который отрабатывает перед стартом `api`/`worker`; локально из `backend/`: `.venv/Scripts/alembic upgrade head`).
+
+Если раньше уже запускался старый стек (до этой миграции схемы) и в Docker-томе `pgdata` есть таблицы, созданные старым `Base.metadata.create_all()` (без таблицы `alembic_version`) — перед первым `docker compose up --build` на этой ветке нужно один раз выполнить `docker compose down -v`, чтобы снести том. Старая схема заменяется новой целиком, данные до миграции не сохраняются (осознанное решение, см. спеку); без этого шага `alembic upgrade head` упадёт на `CREATE TABLE` с "relation already exists".
 
 Для полного стека с БД и worker'ом (рекомендуется для локального тестирования):
 
@@ -31,8 +35,9 @@ Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`
 docker compose up --build
 ```
 
-Это спинит четыре сервиса:
+Это спинит пять сервисов:
 - `db`: PostgreSQL 16 (слушает на `localhost:5432`)
+- `migrate`: one-shot сервис, накатывает схему (`alembic upgrade head`) и завершается — `api`/`worker` стартуют только после его успешного завершения
 - `api`: FastAPI приложение (на `localhost:8000`, требует `X-API-Key` в заголовках)
 - `worker`: фоновый worker, запускающий скрейпер по расписанию
 - `frontend`: Next.js фронтенд (на `localhost:3000`)
@@ -67,7 +72,7 @@ cd backend
 .venv/Scripts/pytest tests/test_run.py::test_process_list_entry_enqueues_documents_and_next_page -v
 ```
 
-Тесты с БД требуют Docker (они спинят временный контейнер `postgres:16-alpine` через testcontainers).
+Тесты с БД требуют Docker (они спинят временный контейнер `postgres:16-alpine` через testcontainers; фикстуры `tests/conftest.py` перед каждым тестом пересоздают схему `public` и прогоняют `alembic upgrade head`, так что миграции проверяются тем же прогоном, что и остальной код).
 
 **Запуск скрейпера вручную:**
 
@@ -101,15 +106,15 @@ docker compose up --build
 Код находится в `backend/` и разделён по слоям:
 
 **Слой хранилища (PostgreSQL via SQLAlchemy):**
-- `backend/db/models.py` — ORM-модели (`Document`, `Comment`, `CrawlQueueEntry`) для таблиц в Postgres.
-- `backend/db/session.py` — `create_engine_and_session_factory()`: создаёт engine и session factory, вызывает `Base.metadata.create_all()`.
+- `backend/db/models.py` — ORM-модели: `LegalAct` (корневая сущность, замена `Document`), нормализованные справочники `GovernmentBody`/`ActType` (get-or-create по имени; `LegalAct.government_body`/`LegalAct.doc_type` — `association_proxy` на их `.name`, поэтому внешний JSON-контракт API не меняется), `Comment` (поле `comment_channel` — какая из 8 вкладок экспертного участия, `typeComment`; уникальность `(legal_act_id, external_comment_id, comment_channel)`), `LegalActSnapshot` (история изменений + сырой HTML + SHA-256 — единственное место, где сырой HTML вообще хранится, у `LegalAct` таких колонок нет), `CrawlQueueEntry`. Внутренние временные поля (`first_seen_at`, `last_checked_at`, `captured_at`, `discovered_at`, `processed_at`) — `DateTime(timezone=True)` (UTC); поля, пришедшие с источника как текст (`created_date`, `discussion_end_date`, `commented_at_raw`), остаются строками — таймзона источника не подтверждена. Дизайн: `docs/superpowers/specs/2026-09-22-legalacts-data-model-design.md`.
+- `backend/db/session.py` — `create_engine_and_session_factory()`: создаёт engine и session factory; схему больше не создаёт — см. Alembic выше.
 
 **Слой скрейпера (парсеры и очередь):**
 - `backend/scraper/queue.py` — управление очередью обхода (`CrawlQueue`): `enqueue`, `next_pending`, `section_for`, `mark_done`, `mark_error`, `requeue_stale_documents`, `requeue_stale_lists`. Единственный источник истины о том, что уже обработано (двигатель резюмируемости).
-- `backend/scraper/store.py` — сохранение документов и комментариев в БД (upsert): `upsert_document`, `upsert_comments`. Сохраняет `first_seen_at`, обновляет `last_checked_at`; kk-поля не затираются, если при очередном обходе не пришли.
+- `backend/scraper/store.py` — сохранение актов и комментариев в БД (upsert): `upsert_legal_act` (get-or-create для `GovernmentBody`/`ActType`; вставляет новую строку `LegalActSnapshot`, только если изменились статус/сроки/счётчики/хэш содержимого — идемпотентно для неизменного повторного обхода), `upsert_comments` (принимает `comment_channel`; сейчас всегда `6` — собирается только вкладка «Комментарий», остальные 7 подтверждённых вкладок экспертного участия пока не собираются). Сохраняет `first_seen_at`, обновляет `last_checked_at`; kk-поля не затираются, если при очередном обходе не пришли — включая `raw_html_kk`, который в этом случае переносится из последнего снапшота.
 - `backend/scraper/fetch.py` — `Fetcher`: вежливый HTTP-клиент с задержкой между запросами, джиттером и ретраями на сетевых/5xx-ошибках; `set_language()` для переключения ru/kk через `/application/changelang`.
-- `backend/scraper/parsers/list_page.py`, `document_page.py`, `comments.py` — разбор HTML через BeautifulSoup+lxml по селекторам, подтверждённым на реальных страницах сайта (фикстуры в `backend/tests/fixtures/`).
-- `backend/scraper/run.py` — оркестрация скрейпера: `process_list_entry`, `process_document_entry`, `run(database_url, limit=None)` (главный цикл: list-страницы обрабатываются раньше document-страниц), `main()` (CLI). Сетевые/разбор-ошибки на уровне одной записи очереди не останавливают весь обход — запись помечается `error`, цикл продолжается.
+- `backend/scraper/parsers/list_page.py`, `document_page.py`, `comments.py` — разбор HTML через BeautifulSoup+lxml по селекторам, подтверждённым на реальных страницах сайта (фикстуры в `backend/tests/fixtures/`). `document_page.py` понимает два шаблона карточки: `.view-npa` (`/npa/view`, разделы `npa`/`kdrp`) и `.blog-item` (`/npa/viewArvConclusion`, раздел `arv`) — селекторы объединены (`.view-npa h2, .blog-item h2` и т.д.), т.к. на первом шаблоне класс `blog-item` висит на пустом `<br>` и конфликта не возникает.
+- `backend/scraper/run.py` — оркестрация скрейпера: `process_list_entry`, `process_document_entry`, `run(database_url, limit=None)` (главный цикл: list-страницы обрабатываются раньше document-страниц), `main()` (CLI); внутренние переменные переименованы `document_id` → `legal_act_id` вслед за моделью, таймстемпы теперь реальные `datetime` (`scraper.run.now()`), а не ISO-строки. Сетевые/разбор-ошибки на уровне одной записи очереди не останавливают весь обход — запись помечается `error`, цикл продолжается. `run()` вызывает `fetcher.set_language("ru")` сразу после создания `Fetcher`, до цикла очереди — без cookie `egovLang` сайт по умолчанию отдаёт казахскую версию, а без этого вызова первый документ каждого цикла `worker/loop.py` парсился бы из казахского HTML под видом русского.
 
 **Worker (фоновый процесс):**
 - `backend/worker/loop.py` — запускает скрейпер на расписание (`SCRAPE_INTERVAL_SECONDS`) в infinite loop'е.
@@ -125,10 +130,12 @@ docker compose up --build
 - `backend/app/schemas/` — Pydantic-схемы для валидации request/response.
 
 **Docker-композиция:**
-- `docker-compose.yml` в корне репо определяет три сервиса:
-  - `db`: PostgreSQL 16, инициализация schema через `backend/db/models.py` (SQLAlchemy создаёт таблицы на старт).
-  - `api`: FastAPI приложение, слушает на порту 8000, требует `X-API-Key` в заголовках.
-  - `worker`: фоновый процесс, запускает `backend/worker/loop.py`.
+- `docker-compose.yml` в корне репо определяет пять сервисов:
+  - `db`: PostgreSQL 16.
+  - `migrate`: one-shot сервис, накатывает схему через `alembic upgrade head` и завершается (exit 0); ждёт `db: service_healthy`.
+  - `api`: FastAPI приложение, слушает на порту 8000, требует `X-API-Key` в заголовках; стартует только после успешного завершения `migrate` (`depends_on: migrate: condition: service_completed_successfully`).
+  - `worker`: фоновый процесс, запускает `backend/worker/loop.py`; та же зависимость от `migrate`.
+  - `frontend`: Next.js фронтенд, слушает на порту 3000, зависит от `api`.
 - `backend/Dockerfile` — однослойный (single-stage) build на `python:3.12-slim`: устанавливает зависимости, копирует код, запускает приложение.
 - `.env.example` — шаблон переменных окружения.
 
@@ -137,18 +144,23 @@ docker compose up --build
 - `frontend/app/layout.tsx` — единственный файл, где разрешено рендерить `<html>`/`<body>` (ограничение Next.js App Router: ровно один layout в дереве может это делать, и это должен быть настоящий корень, не видящий параметр `[locale]`). `<html lang>` там статичный (`"ru"`); для `kk`-страниц реальный атрибут `lang` синхронизирует `useEffect` в `SiteHeader.tsx` (`document.documentElement.lang = locale`) — стандартный обходной путь для App Router, где у корневого layout нет доступа к динамическим сегментам. `frontend/app/global-error.tsx` — отдельный файл с собственным `<html>`/`<body>`, ловит необработанные ошибки в самом `app/layout.tsx`.
 - `frontend/app/[locale]/layout.tsx` — обёртка с шапкой сайта (`SiteHeader`) под корневым layout; здесь же валидация локали (`isLocale`/`notFound()`).
 - `frontend/app/[locale]/not-found.tsx` — определяет локаль из `usePathname()` (не из `params` — Next.js не передаёт их в `not-found.tsx`), поэтому 404 показывается на языке текущего URL, а не всегда по-русски.
+- `frontend/app/[locale]/error.tsx` — error boundary для дерева `[locale]` (ошибки внутри публичных страниц, в отличие от `app/global-error.tsx`, который ловит ошибки самого корневого layout'а); локаль берёт из `useParams()`, показывает сообщение словаря и кнопку повтора (`reset`).
 - `frontend/app/[locale]/*` — публичные страницы: `documents` (каталог с фильтром по разделу и пагинацией), `documents/[id]` (детальная страница документа + комментарии), `analytics` (графики по разделам/статусам + динамика во времени), `crawl-status` (статус очереди обхода и последние ошибки). Локаль (`ru`/`kk`) всегда в пути.
-- `frontend/lib/api-client.ts` — единственный модуль, которому разрешено читать `FASTAPI_BASE_URL`/`API_KEY` и обращаться к FastAPI напрямую (`getDocuments`, `getDocument`, `getAnalyticsSummary`, `getAnalyticsTimeseries`, `getCrawlStatus`); Server Component-страницы вызывают эти функции напрямую (in-process), без self-HTTP. BFF-роуты (`app/api/*`) логируют реальную ошибку через `console.error` на сервере и отдают наружу общее сообщение — не пробрасывают внутренний текст ошибки неавторизованным клиентам.
+- `frontend/lib/env.ts` — единственный модуль, которому разрешено читать `FASTAPI_BASE_URL`/`API_KEY` из `process.env` (`getServerEnv()`, помечен `server-only`); бросает исключение, если переменная не задана.
+- `frontend/lib/api-client.ts` — единственный модуль, которому разрешено обращаться к FastAPI напрямую (`getDocuments`, `getDocument`, `getAnalyticsSummary`, `getAnalyticsTimeseries`, `getCrawlStatus`), учётные данные берёт из `lib/env.ts`; Server Component-страницы вызывают эти функции напрямую (in-process), без self-HTTP. BFF-роуты (`app/api/*`) логируют реальную ошибку через `console.error` на сервере и отдают наружу общее сообщение — не пробрасывают внутренний текст ошибки неавторизованным клиентам.
 - `frontend/app/api/*` — BFF route handlers, обёртки над теми же функциями `lib/api-client.ts`; в v1 самими страницами не используются (задел на будущий client-side fetching).
 - `frontend/lib/i18n/*` — `locales.ts` (список локалей, `isLocale`, `DEFAULT_LOCALE`), `dictionaries.ts` (статические ru/kk словари UI-строк, без i18n-фреймворка).
 - `frontend/components/ui/*` — базовые примитивы в духе shadcn/ui (Button, Table, Badge) поверх Tailwind + Radix.
 - `frontend/components/{documents,analytics,crawl,nav}/*` — презентационные компоненты страниц (таблицы документов, фильтры, пагинация, графики Recharts с обязательной HTML-таблицей рядом, шапка сайта с переключателем языка).
 - `frontend/Dockerfile` — двухстадийная (multi-stage) сборка на `node:20-slim` с `output: "standalone"` (`next.config.js`) — рантайм-стадия не ставит `node_modules` заново, копирует только `.next/standalone` + `.next/static` + `public`; запускается от непривилегированного пользователя `node`.
 
-**Обход двухуровневый и ленивый:** список → карточки документов; каждая обработанная list-страница сама добавляет в очередь только следующую страницу своей пагинации, а не все сразу. Раздел сайта (`section`: `npa`/`kdrp`/`arv`/`withdraw`) хранится в `crawl_queue` в момент постановки в очередь, а не выводится из URL документа — карточки всех разделов доступны по одному и тому же маршруту `/npa/view?id=...`, и раздел виден только на списочной странице, откуда документ был обнаружен.
+**Обход двухуровневый и ленивый:** список → карточки документов; каждая обработанная list-страница сама добавляет в очередь только следующую страницу своей пагинации, а не все сразу. Раздел сайта (`section`: `npa`/`kdrp`/`arv`/`withdraw`) хранится в `crawl_queue` в момент постановки в очередь, а не выводится из URL документа — раздел виден только на списочной странице, откуда документ был обнаружен. Карточки разделов `npa`/`kdrp` живут на `/npa/view?id=...` (шаблон `.view-npa`), карточки `arv` — на `/npa/viewArvConclusion?id=...` (другой шаблон, `.blog-item`, без вкладок комментариев); оба шаблона разбирает один и тот же `document_page.py`.
 
 **Известные ограничения (см. спек):**
 
-- `comments_total` документа считает комментарии по всем вкладкам экспертизы портала; `parse_comments` разбирает только вкладку "Комментарий" — сохранённых комментариев может быть меньше `comments_total`.
-- `robots.txt` запрещает `/npa/view` и `/application` — это сознательно игнорируется для этих путей (см. addendum в спеке); для остальных используемых путей (`/list`, `/Arvlist`) `robots.txt` соблюдается.
+- `comments_total` документа считает комментарии по всем вкладкам экспертизы портала; `parse_comments` разбирает только вкладку "Комментарий" — сохранённых комментариев может быть меньше `comments_total`. Живой проверкой (2026-09-21) подтверждено до 8 таких вкладок (Комментарий/`typeComment=6`, «Атамекен» ҰҚП/`3`, Қоғамдық және сараптамалық кеңестер/`1`, антикоррупционная/научно-правовая/научно-экономическая экспертиза/`8`,`9`,`10`, ЗҚАИ и члены ВАК/`7`, аккредитованные НКО/`4`) — переключаются обычной навигацией `/npa/view?id=<id>&typeComment=<N>`, без отдельного AJAX-эндпоинта.
+- `robots.txt` запрещает `/npa/view` и `/application` — это сознательно игнорируется для этих путей (см. addendum в спеке); для остальных используемых путей (`/list`, `/Arvlist`) `robots.txt` соблюдается. Полный список `Disallow` на самом деле шире (`/report`, `/legalact/`, `/filtercomments/`, `/public`, `/subscriptioncontroller/` и служебные пути) — текущий код их не касается, но расширение на эти пути в будущем потребует того же осознанного решения.
 - `USER_AGENT` в `backend/scraper/run.py` должен оставаться ASCII-совместимым (ISO-8859-1) — HTTP-заголовки не допускают произвольной кириллицы (RFC 7230 §3.2); это уже проверяется тестом `test_user_agent_is_latin1_encodable`.
+- У документов `arv` (`/npa/viewArvConclusion`) нет вкладок комментариев/лейбла статуса — `status`, `discussion_end_date` и список комментариев для них всегда `NULL`/пустые, это не баг парсера, а особенность шаблона (см. фикстуру `document_arv_conclusion.html` и тесты `test_parse_document_page_reads_arv_conclusion_template`/`test_parse_comments_returns_empty_list_for_arv_conclusion_template`).
+
+Два бага, найденных живой проверкой источника 2026-09-21 (были описаны здесь и в addendum `docs/superpowers/specs/2026-09-15-legalacts-scraper-design.md`) — **исправлены**: несовпадение шаблона `arv` с `.view-npa`-селекторами (см. выше про `document_page.py`) и гонка языка на первом документе каждого цикла (см. выше про `run()`). Регрессионные тесты: `test_parse_document_page_reads_arv_conclusion_template`, `test_run_switches_to_russian_before_first_document_fetch`.
