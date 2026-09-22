@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Реализована полная архитектура: Python-скрипт резюмируемо обходит портал `legalacts.egov.kz` (документы + обсуждения с комментариями), сохраняет результат в PostgreSQL-базу через SQLAlchemy ORM, и предоставляет асинхронный FastAPI read API с endpoint'ами для документов, аналитики и статуса обхода. Весь стек протестирован (61/61 backend tests passed) и развёртывается через Docker Compose.
+Реализована полная архитектура: Python-скрипт резюмируемо обходит портал `legalacts.egov.kz` (документы + обсуждения с комментариями), сохраняет результат в PostgreSQL-базу через SQLAlchemy ORM, и предоставляет асинхронный FastAPI read API с endpoint'ами для документов, аналитики и статуса обхода. Весь стек протестирован (69/69 backend tests passed) и развёртывается через Docker Compose.
 
 Исходная спецификация скрейпера: `docs/superpowers/specs/2026-09-15-legalacts-scraper-design.md`.
 Спецификация backend-архитектуры (Postgres + SQLAlchemy + FastAPI): `docs/superpowers/specs/2026-09-18-backend-postgres-fastapi-design.md`.
@@ -24,7 +24,9 @@ python -m venv .venv
 
 Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`; backend теперь рассчитан на запуск внутри контейнера. Основные зависимости: `requests`, `beautifulsoup4` + `lxml`, `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `psycopg2-binary`, `pytest`, `testcontainers`.
 
-Схема БД версионируется через Alembic (`backend/alembic/`); `Base.metadata.create_all()` для прод/dev пути больше не используется — актуальную схему создаёт только `alembic upgrade head` (внутри Docker Compose это часть команды запуска `api`/`worker`; локально из `backend/`: `.venv/Scripts/alembic upgrade head`).
+Схема БД версионируется через Alembic (`backend/alembic/`); `Base.metadata.create_all()` для прод/dev пути больше не используется — актуальную схему создаёт только `alembic upgrade head` (внутри Docker Compose это отдельный one-shot сервис `migrate`, который отрабатывает перед стартом `api`/`worker`; локально из `backend/`: `.venv/Scripts/alembic upgrade head`).
+
+Если раньше уже запускался старый стек (до этой миграции схемы) и в Docker-томе `pgdata` есть таблицы, созданные старым `Base.metadata.create_all()` (без таблицы `alembic_version`) — перед первым `docker compose up --build` на этой ветке нужно один раз выполнить `docker compose down -v`, чтобы снести том. Старая схема заменяется новой целиком, данные до миграции не сохраняются (осознанное решение, см. спеку); без этого шага `alembic upgrade head` упадёт на `CREATE TABLE` с "relation already exists".
 
 Для полного стека с БД и worker'ом (рекомендуется для локального тестирования):
 
@@ -33,8 +35,9 @@ Docker-образ (`backend/Dockerfile`) использует `python:3.12-slim`
 docker compose up --build
 ```
 
-Это спинит четыре сервиса:
+Это спинит пять сервисов:
 - `db`: PostgreSQL 16 (слушает на `localhost:5432`)
+- `migrate`: one-shot сервис, накатывает схему (`alembic upgrade head`) и завершается — `api`/`worker` стартуют только после его успешного завершения
 - `api`: FastAPI приложение (на `localhost:8000`, требует `X-API-Key` в заголовках)
 - `worker`: фоновый worker, запускающий скрейпер по расписанию
 - `frontend`: Next.js фронтенд (на `localhost:3000`)
@@ -127,10 +130,11 @@ docker compose up --build
 - `backend/app/schemas/` — Pydantic-схемы для валидации request/response.
 
 **Docker-композиция:**
-- `docker-compose.yml` в корне репо определяет четыре сервиса:
-  - `db`: PostgreSQL 16, инициализация schema через `backend/db/models.py` (SQLAlchemy создаёт таблицы на старт).
-  - `api`: FastAPI приложение, слушает на порту 8000, требует `X-API-Key` в заголовках.
-  - `worker`: фоновый процесс, запускает `backend/worker/loop.py`.
+- `docker-compose.yml` в корне репо определяет пять сервисов:
+  - `db`: PostgreSQL 16.
+  - `migrate`: one-shot сервис, накатывает схему через `alembic upgrade head` и завершается (exit 0); ждёт `db: service_healthy`.
+  - `api`: FastAPI приложение, слушает на порту 8000, требует `X-API-Key` в заголовках; стартует только после успешного завершения `migrate` (`depends_on: migrate: condition: service_completed_successfully`).
+  - `worker`: фоновый процесс, запускает `backend/worker/loop.py`; та же зависимость от `migrate`.
   - `frontend`: Next.js фронтенд, слушает на порту 3000, зависит от `api`.
 - `backend/Dockerfile` — однослойный (single-stage) build на `python:3.12-slim`: устанавливает зависимости, копирует код, запускает приложение.
 - `.env.example` — шаблон переменных окружения.
