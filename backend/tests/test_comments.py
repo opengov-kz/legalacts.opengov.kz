@@ -31,3 +31,9 @@ def test_parse_comments_flattens_top_level_and_replies():
 
 def test_parse_comments_returns_empty_list_when_no_comments():
     assert comments_parser.parse_comments(_read("document_no_comments.html")) == []
+
+
+def test_parse_comments_returns_empty_list_for_arv_conclusion_template():
+    # /npa/viewArvConclusion pages have no `.main-comments` container at all
+    # (only a JS-toggle reference to the class name) - must not raise.
+    assert comments_parser.parse_comments(_read("document_arv_conclusion.html")) == []
