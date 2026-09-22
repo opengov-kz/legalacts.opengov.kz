@@ -1,7 +1,7 @@
 import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class DocumentListItemOut(BaseModel):
@@ -24,6 +24,10 @@ class DocumentListItemOut(BaseModel):
     first_seen_at: datetime.datetime
     last_checked_at: datetime.datetime
 
+    @field_serializer("first_seen_at", "last_checked_at")
+    def _serialize_datetime(self, value: datetime.datetime) -> str:
+        return value.isoformat()
+
 
 class CommentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -37,6 +41,10 @@ class CommentOut(BaseModel):
     status: Optional[str] = None
     commented_at_raw: Optional[str] = None
     first_seen_at: datetime.datetime
+
+    @field_serializer("first_seen_at")
+    def _serialize_first_seen_at(self, value: datetime.datetime) -> str:
+        return value.isoformat()
 
 
 class DocumentDetailOut(DocumentListItemOut):

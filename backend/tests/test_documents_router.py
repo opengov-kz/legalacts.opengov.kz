@@ -41,6 +41,21 @@ def test_get_document_returns_404_for_missing_id(api_client):
     assert response.status_code == 404
 
 
+def test_get_document_serializes_datetimes_with_utc_offset_not_z(database_url, api_client):
+    legal_act_id = _seed_legal_act(
+        database_url, external_id=5, section="npa", url="https://example.test/5",
+        first_seen_at=datetime.datetime(2026, 9, 1, 2, tzinfo=UTC),
+        last_checked_at=datetime.datetime(2026, 9, 1, 2, tzinfo=UTC),
+    )
+
+    response = api_client.get(f"/documents/{legal_act_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["first_seen_at"] == "2026-09-01T02:00:00+00:00"
+    assert body["last_checked_at"] == "2026-09-01T02:00:00+00:00"
+
+
 def test_get_document_includes_comments(database_url, api_client):
     legal_act_id = _seed_legal_act(database_url, external_id=3, section="npa", url="https://example.test/3")
     _, SessionLocal = create_engine_and_session_factory(database_url)
