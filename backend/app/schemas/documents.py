@@ -26,7 +26,7 @@ class DocumentListItemOut(BaseModel):
 
     @field_serializer("first_seen_at", "last_checked_at")
     def _serialize_datetime(self, value: datetime.datetime) -> str:
-        return value.isoformat()
+        return value.astimezone(datetime.timezone.utc).isoformat()
 
 
 class CommentOut(BaseModel):
@@ -44,7 +44,7 @@ class CommentOut(BaseModel):
 
     @field_serializer("first_seen_at")
     def _serialize_first_seen_at(self, value: datetime.datetime) -> str:
-        return value.isoformat()
+        return value.astimezone(datetime.timezone.utc).isoformat()
 
 
 class DocumentDetailOut(DocumentListItemOut):

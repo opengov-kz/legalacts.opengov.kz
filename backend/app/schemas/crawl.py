@@ -18,7 +18,7 @@ class CrawlErrorOut(BaseModel):
 
     @field_serializer("processed_at")
     def _serialize_processed_at(self, value: Optional[datetime.datetime]) -> Optional[str]:
-        return value.isoformat() if value is not None else None
+        return value.astimezone(datetime.timezone.utc).isoformat() if value is not None else None
 
 
 class CrawlStatusOut(BaseModel):
@@ -28,4 +28,4 @@ class CrawlStatusOut(BaseModel):
 
     @field_serializer("last_processed_at")
     def _serialize_last_processed_at(self, value: Optional[datetime.datetime]) -> Optional[str]:
-        return value.isoformat() if value is not None else None
+        return value.astimezone(datetime.timezone.utc).isoformat() if value is not None else None

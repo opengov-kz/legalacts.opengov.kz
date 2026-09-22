@@ -133,6 +133,25 @@ def test_upsert_legal_act_creates_new_snapshot_when_status_changes(db_session):
     assert [s.captured_at for s in snapshots] == [T1, T2]
 
 
+def test_upsert_legal_act_creates_new_snapshot_when_content_hash_changes(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "url1", _fields(raw_html_ru="<html>content_ru_001</html>"), T1,
+    )
+    store.upsert_legal_act(
+        db_session, 1, "npa", "url1", _fields(raw_html_ru="<html>content_ru_002</html>"), T2,
+    )
+
+    from db.models import LegalActSnapshot
+    snapshots = (
+        db_session.query(LegalActSnapshot)
+        .filter_by(legal_act_id=legal_act_id)
+        .order_by(LegalActSnapshot.captured_at)
+        .all()
+    )
+    assert len(snapshots) == 2
+    assert snapshots[0].content_sha256_ru != snapshots[1].content_sha256_ru
+
+
 def test_upsert_comments_inserts_and_preserves_first_seen_at_on_update(db_session):
     legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
     comment = {
