@@ -1,5 +1,9 @@
+import datetime
+
 from db.models import CrawlQueueEntry
 from db.session import create_engine_and_session_factory
+
+UTC = datetime.timezone.utc
 
 
 def _seed(database_url, entries):
@@ -13,9 +17,14 @@ def _seed(database_url, entries):
 
 def test_crawl_status_reports_counts_by_page_type_and_status(database_url, api_client):
     _seed(database_url, [
-        dict(url="u1", page_type="document", status="done", discovered_at="2026-09-01T00:00:00+00:00", processed_at="2026-09-01T01:00:00+00:00"),
-        dict(url="u2", page_type="document", status="pending", discovered_at="2026-09-01T00:00:00+00:00"),
-        dict(url="u3", page_type="list", status="error", last_error="timeout", discovered_at="2026-09-01T00:00:00+00:00", processed_at="2026-09-01T02:00:00+00:00"),
+        dict(url="u1", page_type="document", status="done",
+             discovered_at=datetime.datetime(2026, 9, 1, tzinfo=UTC),
+             processed_at=datetime.datetime(2026, 9, 1, 1, tzinfo=UTC)),
+        dict(url="u2", page_type="document", status="pending",
+             discovered_at=datetime.datetime(2026, 9, 1, tzinfo=UTC)),
+        dict(url="u3", page_type="list", status="error", last_error="timeout",
+             discovered_at=datetime.datetime(2026, 9, 1, tzinfo=UTC),
+             processed_at=datetime.datetime(2026, 9, 1, 2, tzinfo=UTC)),
     ])
 
     response = api_client.get("/crawl/status")
