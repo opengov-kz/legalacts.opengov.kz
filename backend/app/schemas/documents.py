@@ -1,3 +1,4 @@
+import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -20,8 +21,8 @@ class DocumentListItemOut(BaseModel):
     comments_total: Optional[int] = None
     likes_count: Optional[int] = None
     dislikes_count: Optional[int] = None
-    first_seen_at: str
-    last_checked_at: str
+    first_seen_at: datetime.datetime
+    last_checked_at: datetime.datetime
 
 
 class CommentOut(BaseModel):
@@ -35,7 +36,7 @@ class CommentOut(BaseModel):
     article_ref: Optional[str] = None
     status: Optional[str] = None
     commented_at_raw: Optional[str] = None
-    first_seen_at: str
+    first_seen_at: datetime.datetime
 
 
 class DocumentDetailOut(DocumentListItemOut):
