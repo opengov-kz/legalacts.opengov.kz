@@ -1,3 +1,4 @@
+import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,6 +7,7 @@ from scraper import run as run_module
 from db.session import create_engine_and_session_factory
 
 FIXTURES = Path(__file__).parent / "fixtures"
+UTC = datetime.timezone.utc
 
 
 class StubFetcher:
@@ -14,9 +16,11 @@ class StubFetcher:
         self._status_codes = dict(status_codes or {})
         self.calls = []
         self.lang_calls = []
+        self.events = []
 
     def get(self, url):
         self.calls.append(url)
+        self.events.append(("get", url))
         remaining = self._pages.get(url)
         html = ""
         if remaining:
@@ -26,6 +30,7 @@ class StubFetcher:
 
     def set_language(self, lang, location="/"):
         self.lang_calls.append(lang)
+        self.events.append(("lang", lang))
 
 
 class FlakyStubFetcher(StubFetcher):
@@ -89,20 +94,25 @@ def test_process_document_entry_stores_document_and_comments(db_session):
 
     run_module.process_document_entry(db_session, fetcher, url, section="withdraw")
 
-    from db.models import Comment, Document
-    doc = db_session.execute(
-        Document.__table__.select().where(Document.external_id == 15906353)
+    from db.models import Comment, LegalAct, LegalActSnapshot
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
     ).fetchone()
-    assert doc.section == "withdraw"
-    assert doc.status == "Архив"
-    assert doc.title_kk.startswith("Қазақстан Республикасы")
-    assert doc.raw_html_ru == ru_html
-    assert doc.raw_html_kk == kk_html
+    assert act.section == "withdraw"
+    assert act.status == "Архив"
+    assert act.title_kk.startswith("Қазақстан Республикасы")
 
-    comment_count = db_session.execute(
-        Comment.__table__.select().where(Comment.document_id == doc.id)
+    snapshot = db_session.execute(
+        LegalActSnapshot.__table__.select().where(LegalActSnapshot.legal_act_id == act.id)
+    ).fetchone()
+    assert snapshot.raw_html_ru == ru_html
+    assert snapshot.raw_html_kk == kk_html
+
+    comment_rows = db_session.execute(
+        Comment.__table__.select().where(Comment.legal_act_id == act.id)
     ).fetchall()
-    assert len(comment_count) == 20
+    assert len(comment_rows) == 20
+    assert all(row.comment_channel == run_module.DEFAULT_COMMENT_CHANNEL for row in comment_rows)
     assert fetcher.lang_calls == ["kk", "ru"]
 
 
@@ -112,8 +122,8 @@ def test_process_document_entry_404_stores_nothing(db_session):
 
     run_module.process_document_entry(db_session, fetcher, url, section="npa")
 
-    from db.models import Document
-    assert db_session.execute(Document.__table__.select()).fetchone() is None
+    from db.models import LegalAct
+    assert db_session.execute(LegalAct.__table__.select()).fetchone() is None
     assert fetcher.calls == [url]
     assert fetcher.lang_calls == []
 
@@ -149,6 +159,29 @@ def test_run_seeds_queue_and_respects_limit(database_url, monkeypatch):
     session.close()
 
 
+def test_run_switches_to_russian_before_first_document_fetch(database_url, monkeypatch):
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    _, SessionLocal = create_engine_and_session_factory(database_url)
+    seed_session = SessionLocal()
+    queue.enqueue(seed_session, url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    seed_session.close()
+
+    fetcher = StubFetcher({url: [ru_html, kk_html]})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(database_url, limit=1)
+
+    first_get_index = fetcher.events.index(("get", url))
+    assert fetcher.events[:first_get_index] == [("lang", "ru")], (
+        "run() must switch the session language to ru before the first document "
+        "GET, otherwise a cold session defaults to kk and mislabels the response "
+        "as raw_html_ru"
+    )
+
+
 def test_run_marks_broken_entry_as_error_and_continues_processing_others(database_url, monkeypatch):
     ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
     kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
@@ -158,8 +191,8 @@ def test_run_marks_broken_entry_as_error_and_continues_processing_others(databas
 
     _, SessionLocal = create_engine_and_session_factory(database_url)
     seed_session = SessionLocal()
-    queue.enqueue(seed_session, bad_url, "document", "2020-01-01T00:00:00+00:00", section="npa")
-    queue.enqueue(seed_session, good_url, "document", "2020-01-01T00:00:01+00:00", section="npa")
+    queue.enqueue(seed_session, bad_url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    queue.enqueue(seed_session, good_url, "document", datetime.datetime(2020, 1, 1, 0, 0, 1, tzinfo=UTC), section="npa")
     seed_session.close()
 
     fetcher = FlakyStubFetcher({good_url: [ru_html, kk_html]}, fail_urls={bad_url})
@@ -168,7 +201,7 @@ def test_run_marks_broken_entry_as_error_and_continues_processing_others(databas
     run_module.run(database_url, limit=2)
 
     check_session = SessionLocal()
-    from db.models import CrawlQueueEntry, Document
+    from db.models import CrawlQueueEntry, LegalAct
 
     bad_row = check_session.get(CrawlQueueEntry, bad_url)
     assert bad_row.status == "error"
@@ -177,16 +210,16 @@ def test_run_marks_broken_entry_as_error_and_continues_processing_others(databas
     good_row = check_session.get(CrawlQueueEntry, good_url)
     assert good_row.status == "done"
 
-    doc = check_session.execute(
-        Document.__table__.select().where(Document.external_id == 15906353)
+    act = check_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
     ).fetchone()
-    assert doc is not None
-    assert doc.status == "Архив"
+    assert act is not None
+    assert act.status == "Архив"
 
-    failed_doc = check_session.execute(
-        Document.__table__.select().where(Document.external_id == 99999999)
+    failed_act = check_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 99999999)
     ).fetchone()
-    assert failed_doc is None
+    assert failed_act is None
     check_session.close()
 
 
@@ -195,7 +228,7 @@ def test_run_marks_404_document_entry_done_not_error(database_url, monkeypatch):
 
     _, SessionLocal = create_engine_and_session_factory(database_url)
     seed_session = SessionLocal()
-    queue.enqueue(seed_session, url, "document", "2020-01-01T00:00:00+00:00", section="npa")
+    queue.enqueue(seed_session, url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
     seed_session.close()
 
     fetcher = StubFetcher({}, status_codes={url: 404})
@@ -204,11 +237,11 @@ def test_run_marks_404_document_entry_done_not_error(database_url, monkeypatch):
     run_module.run(database_url, limit=1)
 
     check_session = SessionLocal()
-    from db.models import CrawlQueueEntry, Document
+    from db.models import CrawlQueueEntry, LegalAct
     row = check_session.get(CrawlQueueEntry, url)
     assert row.status == "done"
     assert row.last_error is None
-    assert check_session.execute(Document.__table__.select()).fetchone() is None
+    assert check_session.execute(LegalAct.__table__.select()).fetchone() is None
     check_session.close()
 
 
@@ -228,7 +261,7 @@ def test_second_run_rediscovers_stale_list_page(database_url, monkeypatch):
     from db.models import CrawlQueueEntry
     entry = session.get(CrawlQueueEntry, seed_url)
     assert entry.status == "done"
-    entry.processed_at = "2020-01-01T00:00:00+00:00"
+    entry.processed_at = datetime.datetime(2020, 1, 1, tzinfo=UTC)
     session.commit()
     session.close()
 
