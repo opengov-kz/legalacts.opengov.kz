@@ -643,3 +643,36 @@ def test_second_run_rediscovers_stale_list_page(database_url, monkeypatch):
     run_module.run(database_url, limit=1)
 
     assert fetcher.calls.count(seed_url) == 2
+
+
+def test_run_processes_category_list_only_after_list_and_document_queues_empty(database_url, monkeypatch):
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    doc_url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    category_url = "https://legalacts.egov.kz/list?categoryId=346"
+    category_html = (
+        '<select id="categoryId"><option value="346">Информационные технологии</option></select>'
+    )
+
+    _, SessionLocal = create_engine_and_session_factory(database_url)
+    seed_session = SessionLocal()
+    queue.enqueue(seed_session, doc_url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    queue.enqueue(seed_session, category_url, "category_list", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    seed_session.close()
+
+    fetcher = StubFetcher({doc_url: [ru_html, kk_html], category_url: category_html})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(database_url, limit=1)
+
+    check_session = SessionLocal()
+    from db.models import CrawlQueueEntry
+    assert check_session.get(CrawlQueueEntry, doc_url).status == "done"
+    assert check_session.get(CrawlQueueEntry, category_url).status == "pending"
+    check_session.close()
+
+    run_module.run(database_url, limit=1)
+
+    check_session2 = SessionLocal()
+    assert check_session2.get(CrawlQueueEntry, category_url).status == "done"
+    check_session2.close()

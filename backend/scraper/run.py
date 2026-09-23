@@ -211,6 +211,7 @@ def run(database_url, limit=None):
     has_pending = (
         queue.next_pending(session, "list") is not None
         or queue.next_pending(session, "document") is not None
+        or queue.next_pending(session, "category_list") is not None
     )
     if not has_pending:
         seed_queue(session)
@@ -245,6 +246,18 @@ def run(database_url, limit=None):
             except Exception as exc:
                 session.rollback()
                 queue.mark_error(session, document_url, str(exc), now())
+            processed += 1
+            continue
+
+        category_list_url = queue.next_pending(session, "category_list")
+        if category_list_url is not None:
+            section = queue.section_for(session, category_list_url) or "npa"
+            try:
+                process_category_list_entry(session, fetcher, category_list_url, section=section)
+                queue.mark_done(session, category_list_url, now())
+            except Exception as exc:
+                session.rollback()
+                queue.mark_error(session, category_list_url, str(exc), now())
             processed += 1
             continue
 
