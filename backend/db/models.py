@@ -52,6 +52,9 @@ class LegalAct(Base):
     snapshots = relationship(
         "LegalActSnapshot", back_populates="legal_act", order_by="LegalActSnapshot.captured_at"
     )
+    document_versions = relationship(
+        "DocumentVersion", back_populates="legal_act", order_by="DocumentVersion.version_number"
+    )
 
 
 class Comment(Base):
@@ -103,6 +106,32 @@ class LegalActSnapshot(Base):
     dislikes_count = Column(Integer)
 
     legal_act = relationship("LegalAct", back_populates="snapshots")
+
+
+class DocumentVersion(Base):
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "legal_act_id", "version_number",
+            name="uq_document_version_legal_act_version_number",
+        ),
+        Index("ix_document_versions_legal_act_id", "legal_act_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    legal_act_id = Column(Integer, ForeignKey("legal_acts.id"), nullable=False)
+    external_id = Column(Integer, nullable=False, unique=True)
+    version_number = Column(Integer)
+    title_ru = Column(String)
+    status = Column(String)
+    act_type_id = Column(Integer, ForeignKey("act_types.id"))
+    government_body_id = Column(Integer, ForeignKey("government_bodies.id"))
+    created_date = Column(String)
+    discussion_end_date = Column(String)
+    raw_html_ru = Column(Text)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+    legal_act = relationship("LegalAct", back_populates="document_versions")
 
 
 class CrawlQueueEntry(Base):
