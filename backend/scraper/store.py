@@ -2,7 +2,10 @@ import hashlib
 
 from sqlalchemy import select
 
-from db.models import ActType, Comment, DocumentVersion, GovernmentBody, LegalAct, LegalActSnapshot, Report
+from db.models import (
+    ActType, Category, Comment, DocumentVersion, GovernmentBody, LegalAct,
+    LegalActCategory, LegalActSnapshot, Report,
+)
 
 SNAPSHOT_TRIGGER_FIELDS = (
     "status", "discussion_end_date", "comments_total", "likes_count",
@@ -181,3 +184,39 @@ def report_exists(session, legal_act_id):
 def upsert_report(session, legal_act_id, raw_html_ru, now):
     session.add(Report(legal_act_id=legal_act_id, raw_html_ru=raw_html_ru, first_seen_at=now))
     session.commit()
+
+
+def legal_act_id_for_external_id(session, external_id):
+    return session.execute(
+        select(LegalAct.id).where(LegalAct.external_id == external_id)
+    ).scalar_one_or_none()
+
+
+def get_or_create_category(session, external_id, name):
+    existing = session.execute(
+        select(Category).where(Category.external_id == external_id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        if name and existing.name != name:
+            existing.name = name
+            session.commit()
+        return existing
+
+    category = Category(external_id=external_id, name=name)
+    session.add(category)
+    session.commit()
+    return category
+
+
+def link_legal_act_category(session, legal_act_id, category_id, now):
+    existing = session.execute(
+        select(LegalActCategory.id).where(
+            LegalActCategory.legal_act_id == legal_act_id,
+            LegalActCategory.category_id == category_id,
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        session.add(LegalActCategory(
+            legal_act_id=legal_act_id, category_id=category_id, first_seen_at=now,
+        ))
+        session.commit()

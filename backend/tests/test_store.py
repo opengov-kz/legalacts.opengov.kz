@@ -280,3 +280,66 @@ def test_upsert_report_stores_raw_html_and_first_seen_at(db_session):
     row = db_session.query(Report).filter_by(legal_act_id=legal_act_id).one()
     assert row.raw_html_ru == "<html>report</html>"
     assert row.first_seen_at == T1
+
+
+def test_legal_act_id_for_external_id_returns_none_before_insert_and_id_after(db_session):
+    assert store.legal_act_id_for_external_id(db_session, 15906353) is None
+
+    legal_act_id = store.upsert_legal_act(db_session, 15906353, "npa", "url1", _fields(), T1)
+    assert store.legal_act_id_for_external_id(db_session, 15906353) == legal_act_id
+
+
+def test_get_or_create_category_inserts_new_row(db_session):
+    category = store.get_or_create_category(db_session, 346, "Информационные технологии")
+
+    from db.models import Category
+    row = db_session.get(Category, category.id)
+    assert row.external_id == 346
+    assert row.name == "Информационные технологии"
+
+
+def test_get_or_create_category_reuses_existing_row_by_external_id(db_session):
+    first = store.get_or_create_category(db_session, 346, "Информационные технологии")
+    second = store.get_or_create_category(db_session, 346, "Информационные технологии")
+
+    assert first.id == second.id
+    from db.models import Category
+    assert db_session.query(Category).filter_by(external_id=346).count() == 1
+
+
+def test_get_or_create_category_updates_name_when_site_renamed_it(db_session):
+    first = store.get_or_create_category(db_session, 346, "Старое имя")
+    second = store.get_or_create_category(db_session, 346, "Новое имя")
+
+    assert first.id == second.id
+    from db.models import Category
+    row = db_session.get(Category, first.id)
+    assert row.name == "Новое имя"
+
+
+def test_link_legal_act_category_creates_row(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+    category = store.get_or_create_category(db_session, 346, "Информационные технологии")
+
+    store.link_legal_act_category(db_session, legal_act_id, category.id, T1)
+
+    from db.models import LegalActCategory
+    row = db_session.query(LegalActCategory).filter_by(
+        legal_act_id=legal_act_id, category_id=category.id,
+    ).one()
+    assert row.first_seen_at == T1
+
+
+def test_link_legal_act_category_is_idempotent(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+    category = store.get_or_create_category(db_session, 346, "Информационные технологии")
+
+    store.link_legal_act_category(db_session, legal_act_id, category.id, T1)
+    store.link_legal_act_category(db_session, legal_act_id, category.id, T2)
+
+    from db.models import LegalActCategory
+    rows = db_session.query(LegalActCategory).filter_by(
+        legal_act_id=legal_act_id, category_id=category.id,
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].first_seen_at == T1
