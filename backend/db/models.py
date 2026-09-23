@@ -173,11 +173,28 @@ class QualityEvent(Base):
     __tablename__ = "quality_events"
 
     id = Column(Integer, primary_key=True)
-    legal_act_id = Column(Integer, ForeignKey("legal_acts.id"), nullable=False)
+    legal_act_id = Column(Integer, ForeignKey("legal_acts.id"))
     event_type = Column(String, nullable=False)
     field_name = Column(String, nullable=False)
     detail = Column(Text)
     detected_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class KnownStatusValue(Base):
+    __tablename__ = "known_status_values"
+
+    id = Column(Integer, primary_key=True)
+    value = Column(String, nullable=False, unique=True)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class ListPageTotal(Base):
+    __tablename__ = "list_page_totals"
+
+    id = Column(Integer, primary_key=True)
+    url = Column(String, nullable=False, unique=True)
+    total_pages = Column(Integer, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class CrawlQueueEntry(Base):

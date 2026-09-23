@@ -92,3 +92,23 @@ def test_quality_events_table_has_expected_columns(db_session):
     assert columns == {
         "id", "legal_act_id", "event_type", "field_name", "detail", "detected_at",
     }
+
+
+def test_quality_events_legal_act_id_is_nullable(db_session):
+    columns = {col["name"]: col for col in inspect(db_session.bind).get_columns("quality_events")}
+    assert columns["legal_act_id"]["nullable"] is True
+
+
+def test_migration_creates_known_status_values_and_list_page_totals_tables(pg_engine):
+    tables = set(inspect(pg_engine).get_table_names())
+    assert {"known_status_values", "list_page_totals"}.issubset(tables)
+
+
+def test_known_status_values_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("known_status_values")}
+    assert columns == {"id", "value", "first_seen_at"}
+
+
+def test_list_page_totals_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("list_page_totals")}
+    assert columns == {"id", "url", "total_pages", "updated_at"}
