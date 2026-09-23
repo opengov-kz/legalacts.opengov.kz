@@ -42,6 +42,7 @@ def mark_done(session, url, processed_at):
     entry.status = "done"
     entry.processed_at = processed_at
     entry.attempts += 1
+    entry.consecutive_errors = 0
     session.commit()
 
 
@@ -51,6 +52,7 @@ def mark_error(session, url, error_message, processed_at):
     entry.last_error = error_message
     entry.processed_at = processed_at
     entry.attempts += 1
+    entry.consecutive_errors += 1
     session.commit()
 
 
@@ -74,6 +76,19 @@ def requeue_stale_lists(session, older_than_iso):
             CrawlQueueEntry.page_type.in_(["list", "category_list"]),
             CrawlQueueEntry.status == "done",
             CrawlQueueEntry.processed_at < older_than_iso,
+        )
+        .values(status="pending")
+    )
+    session.commit()
+
+
+def requeue_stale_errors(session, older_than_iso, max_attempts):
+    session.execute(
+        update(CrawlQueueEntry)
+        .where(
+            CrawlQueueEntry.status == "error",
+            CrawlQueueEntry.processed_at < older_than_iso,
+            CrawlQueueEntry.consecutive_errors < max_attempts,
         )
         .values(status="pending")
     )

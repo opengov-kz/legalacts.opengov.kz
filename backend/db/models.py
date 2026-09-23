@@ -177,6 +177,7 @@ class CrawlQueueEntry(Base):
     section = Column(String)
     status = Column(String, nullable=False, default="pending")
     attempts = Column(Integer, nullable=False, default=0)
+    consecutive_errors = Column(Integer, nullable=False, default=0)
     last_error = Column(Text)
     discovered_at = Column(DateTime(timezone=True), nullable=False)
     processed_at = Column(DateTime(timezone=True))

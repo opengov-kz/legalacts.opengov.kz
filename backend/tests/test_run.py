@@ -736,3 +736,65 @@ def test_run_seeds_category_queue_even_when_list_and_document_queues_are_busy(da
     ).fetchall()
     assert len(category_rows) == len(run_module.SEED_LIST_URLS) * len(run_module.CATEGORIES)
     check_session.close()
+
+
+def test_run_retries_stale_error_entry_under_the_cap(database_url, monkeypatch):
+    # Neutralize SEED_LIST_URLS: our document entry starts in "error" status
+    # (not "pending"), so has_pending would read False and run() would
+    # otherwise re-fire seed_queue(), inserting real "list" entries that
+    # outrank "document" in dispatch priority and steal the limit=1 budget
+    # away from the entry this test means to exercise.
+    monkeypatch.setattr(run_module, "SEED_LIST_URLS", [])
+
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    _, SessionLocal = create_engine_and_session_factory(database_url)
+    seed_session = SessionLocal()
+    queue.enqueue(seed_session, url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    queue.mark_error(seed_session, url, "boom", datetime.datetime(2020, 1, 1, tzinfo=UTC))
+    seed_session.close()
+
+    fetcher = StubFetcher({url: [ru_html, kk_html]})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(database_url, limit=1)
+
+    check_session = SessionLocal()
+    try:
+        from db.models import CrawlQueueEntry
+        row = check_session.get(CrawlQueueEntry, url)
+        assert row.status == "done"
+    finally:
+        check_session.close()
+
+
+def test_run_does_not_retry_error_entry_at_the_cap(database_url, monkeypatch):
+    monkeypatch.setattr(run_module, "SEED_LIST_URLS", [])
+
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    _, SessionLocal = create_engine_and_session_factory(database_url)
+    seed_session = SessionLocal()
+    queue.enqueue(seed_session, url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    for i in range(run_module.MAX_ERROR_RETRIES):
+        queue.mark_error(
+            seed_session, url, "boom",
+            datetime.datetime(2020, 1, 1, tzinfo=UTC) + datetime.timedelta(hours=i),
+        )
+    seed_session.close()
+
+    fetcher = StubFetcher({})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(database_url, limit=1)
+
+    check_session = SessionLocal()
+    try:
+        from db.models import CrawlQueueEntry
+        row = check_session.get(CrawlQueueEntry, url)
+        assert row.status == "error"
+        assert fetcher.calls == []
+    finally:
+        check_session.close()

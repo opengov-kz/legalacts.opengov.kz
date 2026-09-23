@@ -41,8 +41,8 @@ def test_legal_act_snapshots_table_has_expected_columns(db_session):
 def test_crawl_queue_table_has_expected_columns(db_session):
     columns = {col["name"] for col in inspect(db_session.bind).get_columns("crawl_queue")}
     assert columns == {
-        "url", "page_type", "section", "status", "attempts", "last_error",
-        "discovered_at", "processed_at",
+        "url", "page_type", "section", "status", "attempts", "consecutive_errors",
+        "last_error", "discovered_at", "processed_at",
     }
 
 

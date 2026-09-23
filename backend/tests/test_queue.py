@@ -42,6 +42,26 @@ def test_mark_error_records_message_and_keeps_out_of_pending(db_session):
     assert row.last_error == "timeout"
 
 
+def test_mark_error_increments_consecutive_errors(db_session):
+    queue.enqueue(db_session, "https://example.test/list", "list", datetime.datetime(2026, 9, 15, tzinfo=UTC))
+    queue.mark_error(db_session, "https://example.test/list", "timeout", datetime.datetime(2026, 9, 15, 0, 5, tzinfo=UTC))
+    queue.mark_error(db_session, "https://example.test/list", "timeout", datetime.datetime(2026, 9, 15, 0, 10, tzinfo=UTC))
+
+    from db.models import CrawlQueueEntry
+    row = db_session.get(CrawlQueueEntry, "https://example.test/list")
+    assert row.consecutive_errors == 2
+
+
+def test_mark_done_resets_consecutive_errors(db_session):
+    queue.enqueue(db_session, "https://example.test/list", "list", datetime.datetime(2026, 9, 15, tzinfo=UTC))
+    queue.mark_error(db_session, "https://example.test/list", "timeout", datetime.datetime(2026, 9, 15, 0, 5, tzinfo=UTC))
+    queue.mark_done(db_session, "https://example.test/list", datetime.datetime(2026, 9, 15, 0, 10, tzinfo=UTC))
+
+    from db.models import CrawlQueueEntry
+    row = db_session.get(CrawlQueueEntry, "https://example.test/list")
+    assert row.consecutive_errors == 0
+
+
 def test_enqueue_stores_section_and_section_for_reads_it_back(db_session):
     queue.enqueue(
         db_session, "https://example.test/npa/view?id=1", "document",
@@ -114,3 +134,41 @@ def test_any_exist_counts_done_rows_too(db_session):
     queue.mark_done(db_session, "https://example.test/cat-2", datetime.datetime(2026, 9, 15, tzinfo=UTC))
 
     assert queue.any_exist(db_session, "category_list") is True
+
+
+def test_requeue_stale_errors_resets_old_errors_under_the_cap(db_session):
+    queue.enqueue(db_session, "https://example.test/err-old", "document", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    queue.mark_error(db_session, "https://example.test/err-old", "timeout", datetime.datetime(2026, 9, 1, tzinfo=UTC))
+
+    queue.requeue_stale_errors(db_session, datetime.datetime(2026, 9, 10, tzinfo=UTC), max_attempts=5)
+
+    assert queue.next_pending(db_session, "document") == "https://example.test/err-old"
+
+
+def test_requeue_stale_errors_leaves_fresh_errors_pending_in_error_state(db_session):
+    queue.enqueue(db_session, "https://example.test/err-new", "document", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    queue.mark_error(db_session, "https://example.test/err-new", "timeout", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+
+    queue.requeue_stale_errors(db_session, datetime.datetime(2026, 9, 10, tzinfo=UTC), max_attempts=5)
+
+    assert queue.next_pending(db_session, "document") is None
+    from db.models import CrawlQueueEntry
+    assert db_session.get(CrawlQueueEntry, "https://example.test/err-new").status == "error"
+
+
+def test_requeue_stale_errors_leaves_entries_at_the_cap_alone(db_session):
+    queue.enqueue(db_session, "https://example.test/err-maxed", "document", datetime.datetime(2026, 9, 1, tzinfo=UTC))
+    for i in range(5):
+        queue.mark_error(
+            db_session, "https://example.test/err-maxed", "timeout",
+            datetime.datetime(2026, 9, 1, tzinfo=UTC) + datetime.timedelta(hours=i),
+        )
+
+    from db.models import CrawlQueueEntry
+    row = db_session.get(CrawlQueueEntry, "https://example.test/err-maxed")
+    assert row.consecutive_errors == 5
+
+    queue.requeue_stale_errors(db_session, datetime.datetime(2026, 9, 10, tzinfo=UTC), max_attempts=5)
+
+    assert queue.next_pending(db_session, "document") is None
+    assert db_session.get(CrawlQueueEntry, "https://example.test/err-maxed").status == "error"

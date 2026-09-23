@@ -15,6 +15,7 @@ USER_AGENT = (
     "contact: k.nefyodov@qbs.kz)"
 )
 STALE_AFTER_DAYS = 7
+MAX_ERROR_RETRIES = 5
 DEFAULT_COMMENT_CHANNEL = 6  # вкладка «Комментарий» (typeComment=6)
 EXPERT_COMMENT_CHANNELS = (1, 3, 4, 7, 8, 9, 10)  # остальные вкладки экспертного участия
 
@@ -233,6 +234,7 @@ def run(database_url, limit=None):
     stale_threshold = now() - datetime.timedelta(days=STALE_AFTER_DAYS)
     queue.requeue_stale_documents(session, stale_threshold)
     queue.requeue_stale_lists(session, stale_threshold)
+    queue.requeue_stale_errors(session, stale_threshold, MAX_ERROR_RETRIES)
 
     fetcher = Fetcher(USER_AGENT)
     fetcher.set_language("ru")
