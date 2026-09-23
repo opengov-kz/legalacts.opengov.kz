@@ -2,7 +2,7 @@ import hashlib
 
 from sqlalchemy import select
 
-from db.models import ActType, Comment, GovernmentBody, LegalAct, LegalActSnapshot
+from db.models import ActType, Comment, DocumentVersion, GovernmentBody, LegalAct, LegalActSnapshot
 
 SNAPSHOT_TRIGGER_FIELDS = (
     "status", "discussion_end_date", "comments_total", "likes_count",
@@ -143,4 +143,30 @@ def upsert_comments(session, legal_act_id, comments, comment_channel, now):
             existing.status = comment["status"]
             existing.commented_at_raw = comment["commented_at_raw"]
 
+    session.commit()
+
+
+def document_version_exists(session, external_id):
+    return session.execute(
+        select(DocumentVersion.id).where(DocumentVersion.external_id == external_id)
+    ).scalar_one_or_none() is not None
+
+
+def upsert_document_version(session, legal_act_id, external_id, fields, version_number, now):
+    government_body = _get_or_create(session, GovernmentBody, fields.get("government_body"))
+    act_type = _get_or_create(session, ActType, fields.get("doc_type"))
+
+    session.add(DocumentVersion(
+        legal_act_id=legal_act_id,
+        external_id=external_id,
+        version_number=version_number,
+        title_ru=fields.get("title"),
+        status=fields.get("status"),
+        act_type_id=act_type.id if act_type else None,
+        government_body_id=government_body.id if government_body else None,
+        created_date=fields.get("created_date"),
+        discussion_end_date=fields.get("discussion_end_date"),
+        raw_html_ru=fields.get("raw_html_ru"),
+        first_seen_at=now,
+    ))
     session.commit()

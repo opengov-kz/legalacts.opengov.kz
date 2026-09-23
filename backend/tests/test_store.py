@@ -219,3 +219,45 @@ def test_upsert_comments_same_external_id_different_channel_creates_separate_row
         .order_by(Comment.comment_channel)
     ).fetchall()
     assert [(r.comment_channel, r.body) for r in rows] == [(6, "public comment"), (8, "expert comment")]
+
+
+def test_document_version_exists_returns_false_before_insert_and_true_after(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+    assert store.document_version_exists(db_session, 200) is False
+
+    store.upsert_document_version(
+        db_session, legal_act_id, 200,
+        {"title": "V1 title", "status": None, "doc_type": "Решение",
+         "government_body": "Body A", "created_date": "01/01/2020",
+         "discussion_end_date": "01/02/2020", "raw_html_ru": "<html>v1</html>"},
+        1, T1,
+    )
+    assert store.document_version_exists(db_session, 200) is True
+
+
+def test_upsert_document_version_stores_fields_and_reuses_lookup_rows(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+
+    store.upsert_document_version(
+        db_session, legal_act_id, 200,
+        {"title": "V1 title", "status": None, "doc_type": "DocType_Value_001",
+         "government_body": "Body_Value_001", "created_date": "01/01/2020",
+         "discussion_end_date": "01/02/2020", "raw_html_ru": "<html>v1</html>"},
+        1, T1,
+    )
+
+    from db.models import ActType, DocumentVersion, GovernmentBody
+    row = db_session.query(DocumentVersion).filter_by(external_id=200).one()
+    assert row.legal_act_id == legal_act_id
+    assert row.version_number == 1
+    assert row.title_ru == "V1 title"
+    assert row.status is None
+    assert row.created_date == "01/01/2020"
+    assert row.discussion_end_date == "01/02/2020"
+    assert row.raw_html_ru == "<html>v1</html>"
+    assert row.first_seen_at == T1
+
+    # _fields() (used to create the parent legal act) already created these
+    # lookup rows with the same names — must be reused, not duplicated.
+    assert db_session.query(GovernmentBody).filter_by(name="Body_Value_001").count() == 1
+    assert db_session.query(ActType).filter_by(name="DocType_Value_001").count() == 1

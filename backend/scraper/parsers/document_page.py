@@ -9,6 +9,10 @@ LABEL_MAP = {
     "discussion_end_date": "Публичное обсуждение до:",
 }
 
+GOVERNMENT_BODY_LABEL = "Государственный орган НПА:"
+VERSION_LABEL = "Версия проекта:"
+VERSION_NUMBER_RE = re.compile(r"Версия\s+(\d+)")
+
 
 def _label_text(soup, label):
     for small in soup.select(".view-npa small, .blog-item small"):
@@ -17,6 +21,13 @@ def _label_text(soup, label):
             b.extract()
             return small.get_text(strip=True)
     return None
+
+
+def _government_body(soup):
+    el = soup.select_one(".blog-info .gov-parent")
+    if el is not None:
+        return el.get_text(strip=True)
+    return _label_text(soup, GOVERNMENT_BODY_LABEL)
 
 
 def _count_by_class_prefix(soup, prefix):
@@ -35,10 +46,7 @@ def parse_document_page(html):
 
     fields = {key: _label_text(soup, label) for key, label in LABEL_MAP.items()}
 
-    government_body_el = soup.select_one(".blog-info .gov-parent")
-    government_body = (
-        government_body_el.get_text(strip=True) if government_body_el else None
-    )
+    government_body = _government_body(soup)
 
     comments_total = 0
     comments_icon = soup.select_one('.blog-info i[title="Всего комментариев"]')
@@ -59,3 +67,21 @@ def parse_document_page(html):
         "likes_count": _count_by_class_prefix(soup, "likeCount-"),
         "dislikes_count": _count_by_class_prefix(soup, "dislikeCount-"),
     }
+
+
+def parse_version_info(html):
+    soup = BeautifulSoup(html, "lxml")
+    for small in soup.select(".view-npa small, .blog-item small"):
+        b = small.find("b")
+        if b is None or b.get_text(strip=True) != VERSION_LABEL:
+            continue
+        link = small.find("a", href=True)
+        previous_version_url = link["href"] if link else None
+        b.extract()
+        if link is not None:
+            link.extract()
+        text = small.get_text(" ", strip=True)
+        match = VERSION_NUMBER_RE.search(text)
+        version_number = int(match.group(1)) if match else None
+        return {"version_number": version_number, "previous_version_url": previous_version_url}
+    return {"version_number": None, "previous_version_url": None}

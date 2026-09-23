@@ -1,7 +1,7 @@
 import argparse
 import datetime
 import os
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from db.session import create_engine_and_session_factory
 from scraper import queue, store
@@ -57,6 +57,25 @@ def _with_type_comment(url, channel):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
+def _collect_prior_versions(session, fetcher, legal_act_id, next_url, timestamp):
+    while next_url is not None:
+        full_url = urljoin(BASE_URL, next_url)
+        external_id = int(dict(parse_qsl(urlsplit(full_url).query))["id"])
+        if store.document_version_exists(session, external_id):
+            return
+        response = fetcher.get(full_url)
+        if response.status_code == 404:
+            return
+        html = response.text
+        fields = document_page.parse_document_page(html)
+        fields["raw_html_ru"] = html
+        version_info = document_page.parse_version_info(html)
+        store.upsert_document_version(
+            session, legal_act_id, external_id, fields, version_info["version_number"], timestamp,
+        )
+        next_url = version_info["previous_version_url"]
+
+
 def process_list_entry(session, fetcher, url, section="npa"):
     response = fetcher.get(url)
     if response.status_code == 404:
@@ -106,6 +125,11 @@ def process_document_entry(session, fetcher, url, section="npa"):
             channel_response = fetcher.get(_with_type_comment(url, channel))
             channel_comments = comments_parser.parse_comments(channel_response.text)
             store.upsert_comments(session, legal_act_id, channel_comments, channel, timestamp)
+
+        version_info = document_page.parse_version_info(ru_html)
+        _collect_prior_versions(
+            session, fetcher, legal_act_id, version_info["previous_version_url"], timestamp,
+        )
 
 
 def run(database_url, limit=None):
