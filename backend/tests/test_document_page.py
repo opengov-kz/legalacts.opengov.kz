@@ -108,3 +108,13 @@ def test_parse_version_info_returns_none_when_field_absent():
     data = document_page.parse_version_info(html)
     assert data["version_number"] is None
     assert data["previous_version_url"] is None
+
+
+def test_parse_report_link_returns_href_when_present():
+    html = '<div class="view-npa"><h2>Test</h2><a href="/report?id=15906353">Посмотреть отчет</a></div>'
+    assert document_page.parse_report_link(html) == "/report?id=15906353"
+
+
+def test_parse_report_link_returns_none_when_absent():
+    html = '<div class="view-npa"><h2>Test</h2></div>'
+    assert document_page.parse_report_link(html) is None
