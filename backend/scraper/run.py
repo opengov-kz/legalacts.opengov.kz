@@ -27,6 +27,35 @@ SEED_LIST_URLS = [
     ("withdraw", f"{BASE_URL}/application/withdraw"),
 ]
 
+CATEGORIES = [
+    (346, "Информационные технологии"),
+    (359, "Иммиграция, миграция, гражданство"),
+    (367, "Семья"),
+    (368, "Образование"),
+    (369, "Трудоустройство и занятость"),
+    (370, "Социальное обеспечение"),
+    (372, "Недвижимость"),
+    (373, "Налоги и финансы"),
+    (374, "Правовая помощь"),
+    (375, "Туризм и спорт"),
+    (376, "Воинский учет и безопасность"),
+    (633, "Сельское хозяйство"),
+    (779, "Лицензирование и аккредитация"),
+    (806, "Транспорт и коммуникации"),
+    (844, "Здравоохранение"),
+    (1301, "Природные ресурсы и экология"),
+    (1385, "Интеллектуальная собственность"),
+    (1442, "Регистрация и развитие бизнеса"),
+    (1551, "Промышленность"),
+    (1874, "Культура, Религия, СМИ"),
+    (8232, "Экономика/экономическая деятельность"),
+    (15888758, "Другие"),
+    (15888765, "Иные вопросы"),
+    (15888767, "Государственное управление"),
+    (15888768, "Организационные вопросы"),
+]
+CATEGORY_NAMES = dict(CATEGORIES)
+
 
 def now():
     return datetime.datetime.now(datetime.timezone.utc)
@@ -36,6 +65,11 @@ def seed_queue(session):
     discovered = now()
     for section, url in SEED_LIST_URLS:
         queue.enqueue(session, url, "list", discovered, section=section)
+    for section, url in SEED_LIST_URLS:
+        for category_id, _category_name in CATEGORIES:
+            queue.enqueue(
+                session, _with_category(url, category_id), "category_list", discovered, section=section,
+            )
 
 
 def _current_page(url):
@@ -54,6 +88,13 @@ def _with_type_comment(url, channel):
     parts = urlsplit(url)
     query = dict(parse_qsl(parts.query))
     query["typeComment"] = str(channel)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _with_category(url, category_id):
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query))
+    query["categoryId"] = str(category_id)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 

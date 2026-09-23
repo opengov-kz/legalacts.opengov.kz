@@ -86,6 +86,32 @@ def test_process_list_entry_stops_pagination_at_last_page(db_session):
     assert len(page_rows) == 0
 
 
+def test_seed_queue_enqueues_category_list_for_every_seed_and_category(db_session):
+    run_module.seed_queue(db_session)
+
+    from db.models import CrawlQueueEntry
+    category_rows = db_session.execute(
+        CrawlQueueEntry.__table__.select().where(CrawlQueueEntry.page_type == "category_list")
+    ).fetchall()
+    assert len(category_rows) == len(run_module.SEED_LIST_URLS) * len(run_module.CATEGORIES)
+
+    npa_urls = {row.url for row in category_rows if row.section == "npa"}
+    assert "https://legalacts.egov.kz/list?categoryId=346" in npa_urls
+
+    kdrp_urls = {row.url for row in category_rows if row.section == "kdrp"}
+    assert any(
+        "types%5B0%5D=7001" in url and "categoryId=346" in url for url in kdrp_urls
+    )
+
+
+def test_with_category_preserves_existing_query_params():
+    url = run_module._with_category(
+        "https://legalacts.egov.kz/list?types[0]=7001&types[1]=7002", 346,
+    )
+    assert "categoryId=346" in url
+    assert "types" in url
+
+
 def test_process_document_entry_stores_document_and_comments(db_session):
     ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
     kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
