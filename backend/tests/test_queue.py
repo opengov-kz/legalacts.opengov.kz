@@ -100,3 +100,17 @@ def test_requeue_stale_lists_also_resets_old_done_category_lists(db_session):
 
     from db.models import CrawlQueueEntry
     assert db_session.get(CrawlQueueEntry, "https://example.test/cat-new").status == "done"
+
+
+def test_any_exist_returns_false_before_enqueue_and_true_after(db_session):
+    assert queue.any_exist(db_session, "category_list") is False
+
+    queue.enqueue(db_session, "https://example.test/cat-1", "category_list", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    assert queue.any_exist(db_session, "category_list") is True
+
+
+def test_any_exist_counts_done_rows_too(db_session):
+    queue.enqueue(db_session, "https://example.test/cat-2", "category_list", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    queue.mark_done(db_session, "https://example.test/cat-2", datetime.datetime(2026, 9, 15, tzinfo=UTC))
+
+    assert queue.any_exist(db_session, "category_list") is True

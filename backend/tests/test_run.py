@@ -102,8 +102,8 @@ def test_process_list_entry_stops_pagination_at_last_page(db_session):
     assert len(page_rows) == 0
 
 
-def test_seed_queue_enqueues_category_list_for_every_seed_and_category(db_session):
-    run_module.seed_queue(db_session)
+def test_seed_category_queue_enqueues_category_list_for_every_seed_and_category(db_session):
+    run_module.seed_category_queue(db_session)
 
     from db.models import CrawlQueueEntry
     category_rows = db_session.execute(
@@ -486,6 +486,17 @@ def test_process_category_list_entry_falls_back_to_static_name_when_dropdown_mis
     assert category.name == run_module.CATEGORY_NAMES[346]
 
 
+def test_process_category_list_entry_returns_early_when_category_id_unknown(db_session):
+    url = "https://legalacts.egov.kz/list?categoryId=999999"
+    html = '<div class="contentlist"><h3><a href="/npa/view?id=100">Title</a></h3></div>'
+    fetcher = StubFetcher({url: html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Category
+    assert db_session.execute(Category.__table__.select()).fetchall() == []
+
+
 def test_process_category_list_entry_enqueues_next_page(db_session):
     list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
     url = "https://legalacts.egov.kz/list?categoryId=346"
@@ -500,6 +511,27 @@ def test_process_category_list_entry_enqueues_next_page(db_session):
     assert len(next_page) == 1
     assert "page=2" in next_page[0].url
     assert "categoryId=346" in next_page[0].url
+
+
+def test_process_category_list_entry_skips_card_with_unparsable_id(db_session):
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    html = (
+        '<select id="categoryId"><option value="346">Информационные технологии</option></select>'
+        '<div class="contentlist"><h3><a href="/npa/view?id=not-a-number">Bad</a></h3></div>'
+        '<div class="contentlist"><h3><a href="/npa/view">No id at all</a></h3></div>'
+    )
+    fetcher = StubFetcher({url: html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import CrawlQueueEntry
+    next_page = db_session.execute(
+        CrawlQueueEntry.__table__.select().where(CrawlQueueEntry.page_type == "category_list")
+    ).fetchall()
+    # totalPages defaults to 1 when absent from this minimal HTML, current page is 1,
+    # so no next-page entry is expected here — this test's point is that processing
+    # the malformed cards above did not raise.
+    assert next_page == []
 
 
 def test_process_category_list_entry_404_enqueues_nothing(db_session):
@@ -646,6 +678,12 @@ def test_second_run_rediscovers_stale_list_page(database_url, monkeypatch):
 
 
 def test_run_processes_category_list_only_after_list_and_document_queues_empty(database_url, monkeypatch):
+    # Fix 1 makes has_pending consider only list/document, so once both drain,
+    # run() re-fires seed_queue() (that's the point of the fix). This test is
+    # about queue *priority* (category_list is dispatched last), not about
+    # reseeding, so neutralize SEED_LIST_URLS to keep the second run() call
+    # from repopulating "list" and masking the category_list dispatch.
+    monkeypatch.setattr(run_module, "SEED_LIST_URLS", [])
     ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
     kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
     doc_url = "https://legalacts.egov.kz/npa/view?id=15906353"
@@ -676,3 +714,25 @@ def test_run_processes_category_list_only_after_list_and_document_queues_empty(d
     check_session2 = SessionLocal()
     assert check_session2.get(CrawlQueueEntry, category_url).status == "done"
     check_session2.close()
+
+
+def test_run_seeds_category_queue_even_when_list_and_document_queues_are_busy(database_url, monkeypatch):
+    doc_url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    _, SessionLocal = create_engine_and_session_factory(database_url)
+    seed_session = SessionLocal()
+    queue.enqueue(seed_session, doc_url, "document", datetime.datetime(2020, 1, 1, tzinfo=UTC), section="npa")
+    seed_session.close()
+
+    fetcher = StubFetcher({})
+    monkeypatch.setattr(run_module, "Fetcher", lambda user_agent: fetcher)
+
+    run_module.run(database_url, limit=0)
+
+    check_session = SessionLocal()
+    from db.models import CrawlQueueEntry
+    category_rows = check_session.execute(
+        CrawlQueueEntry.__table__.select().where(CrawlQueueEntry.page_type == "category_list")
+    ).fetchall()
+    assert len(category_rows) == len(run_module.SEED_LIST_URLS) * len(run_module.CATEGORIES)
+    check_session.close()

@@ -28,5 +28,5 @@ def parse_total_pages(html):
 
 def parse_category_name(html, category_id):
     soup = BeautifulSoup(html, "lxml")
-    option = soup.select_one(f'option[value="{category_id}"]')
+    option = soup.select_one(f'#categoryId option[value="{category_id}"]')
     return option.get_text(strip=True) if option else None

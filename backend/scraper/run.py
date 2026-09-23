@@ -65,6 +65,10 @@ def seed_queue(session):
     discovered = now()
     for section, url in SEED_LIST_URLS:
         queue.enqueue(session, url, "list", discovered, section=section)
+
+
+def seed_category_queue(session):
+    discovered = now()
     for section, url in SEED_LIST_URLS:
         for category_id, _category_name in CATEGORIES:
             queue.enqueue(
@@ -143,11 +147,19 @@ def process_category_list_entry(session, fetcher, url, section="npa"):
 
     category_id = int(dict(parse_qsl(urlsplit(url).query))["categoryId"])
     category_name = list_page.parse_category_name(html, category_id) or CATEGORY_NAMES.get(category_id)
+    if category_name is None:
+        return
     category = store.get_or_create_category(session, category_id, category_name)
 
     discovered = now()
     for card in list_page.parse_list_page(html):
-        external_id = int(dict(parse_qsl(urlsplit(card["url"]).query))["id"])
+        card_query = dict(parse_qsl(urlsplit(card["url"]).query))
+        if "id" not in card_query:
+            continue
+        try:
+            external_id = int(card_query["id"])
+        except ValueError:
+            continue
         legal_act_id = store.legal_act_id_for_external_id(session, external_id)
         if legal_act_id is not None:
             store.link_legal_act_category(session, legal_act_id, category.id, discovered)
@@ -211,10 +223,12 @@ def run(database_url, limit=None):
     has_pending = (
         queue.next_pending(session, "list") is not None
         or queue.next_pending(session, "document") is not None
-        or queue.next_pending(session, "category_list") is not None
     )
     if not has_pending:
         seed_queue(session)
+
+    if not queue.any_exist(session, "category_list"):
+        seed_category_queue(session)
 
     stale_threshold = now() - datetime.timedelta(days=STALE_AFTER_DAYS)
     queue.requeue_stale_documents(session, stale_threshold)

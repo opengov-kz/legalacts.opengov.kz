@@ -27,6 +27,11 @@ def next_pending(session, page_type):
     return session.execute(stmt).scalar_one_or_none()
 
 
+def any_exist(session, page_type):
+    stmt = select(CrawlQueueEntry.url).where(CrawlQueueEntry.page_type == page_type).limit(1)
+    return session.execute(stmt).scalar_one_or_none() is not None
+
+
 def section_for(session, url):
     stmt = select(CrawlQueueEntry.section).where(CrawlQueueEntry.url == url)
     return session.execute(stmt).scalar_one_or_none()
