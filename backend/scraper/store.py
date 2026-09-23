@@ -1,6 +1,5 @@
 import datetime
 import hashlib
-from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -29,7 +28,7 @@ def _parse_source_date(raw):
         return None
     try:
         return datetime.datetime.strptime(raw, SOURCE_DATE_FORMAT).date()
-    except ValueError:
+    except (ValueError, TypeError):
         return None
 
 
@@ -49,8 +48,7 @@ def _record_quality_events(session, legal_act_id, previous_counters, values, now
     events = []
 
     url = values["url"]
-    parsed_url = urlsplit(url)
-    if not parsed_url.scheme or not parsed_url.netloc or not url.startswith(BASE_URL):
+    if not url.startswith(BASE_URL):
         events.append(("invalid_url", "url", f"malformed or unexpected host: {url}"))
 
     parsed_dates = {}

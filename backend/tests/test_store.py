@@ -12,14 +12,19 @@ def _fields(**overrides):
     base = dict(
         title_ru="Title_RU_001", title_kk="Title_KK_001",
         status="Status_Value_001", doc_type="DocType_Value_001",
-        government_body="Body_Value_001", created_date="2026-01-01",
-        discussion_end_date="2026-12-31", comments_total=42,
+        government_body="Body_Value_001", created_date="01/01/2026",
+        discussion_end_date="31/12/2026", comments_total=42,
         likes_count=99, dislikes_count=88,
         raw_html_ru="<html>content_ru_001</html>",
         raw_html_kk="<html>content_kk_001</html>",
     )
     base.update(overrides)
     return base
+
+
+def test_base_url_matches_run_module_base_url():
+    from scraper import run as run_module
+    assert store.BASE_URL == run_module.BASE_URL
 
 
 def test_upsert_legal_act_inserts_new_row_and_creates_snapshot(db_session):
@@ -39,8 +44,8 @@ def test_upsert_legal_act_inserts_new_row_and_creates_snapshot(db_session):
     assert row.status == "Status_Value_001"
     assert row.doc_type == "DocType_Value_001"
     assert row.government_body == "Body_Value_001"
-    assert row.created_date == "2026-01-01"
-    assert row.discussion_end_date == "2026-12-31"
+    assert row.created_date == "01/01/2026"
+    assert row.discussion_end_date == "31/12/2026"
     assert row.comments_total == 42
     assert row.likes_count == 99
     assert row.dislikes_count == 88
@@ -482,3 +487,16 @@ def test_upsert_legal_act_does_not_record_counter_null_flip_when_both_are_number
     assert db_session.query(QualityEvent).filter_by(
         legal_act_id=legal_act_id, event_type="counter_null_flip", field_name="comments_total",
     ).count() == 0
+
+
+def test_upsert_legal_act_records_invalid_date_event_for_non_string_date(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(created_date=20260101), T1,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="invalid_date", field_name="created_date",
+    ).all()
+    assert len(events) == 1
