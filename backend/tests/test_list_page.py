@@ -20,3 +20,18 @@ def test_parse_total_pages_reads_script_value():
 
 def test_parse_total_pages_defaults_to_one_when_absent():
     assert list_page.parse_total_pages("<html><body>Нет данных</body></html>") == 1
+
+
+def test_parse_category_name_finds_matching_option():
+    html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    assert list_page.parse_category_name(html, 8232) == "Экономика/экономическая деятельность"
+
+
+def test_parse_category_name_strips_whitespace():
+    html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    assert list_page.parse_category_name(html, 779) == "Лицензирование и аккредитация"
+
+
+def test_parse_category_name_returns_none_when_id_not_found():
+    html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    assert list_page.parse_category_name(html, 999999) is None

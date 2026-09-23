@@ -24,3 +24,9 @@ def parse_list_page(html):
 def parse_total_pages(html):
     match = TOTAL_PAGES_RE.search(html)
     return int(match.group(1)) if match else 1
+
+
+def parse_category_name(html, category_id):
+    soup = BeautifulSoup(html, "lxml")
+    option = soup.select_one(f'option[value="{category_id}"]')
+    return option.get_text(strip=True) if option else None
