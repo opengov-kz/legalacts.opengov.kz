@@ -1,11 +1,16 @@
+import datetime
 import hashlib
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
 from db.models import (
     ActType, Category, Comment, DocumentVersion, GovernmentBody, LegalAct,
-    LegalActCategory, LegalActSnapshot, Report,
+    LegalActCategory, LegalActSnapshot, QualityEvent, Report,
 )
+
+BASE_URL = "https://legalacts.egov.kz"
+SOURCE_DATE_FORMAT = "%d/%m/%Y"
 
 SNAPSHOT_TRIGGER_FIELDS = (
     "status", "discussion_end_date", "comments_total", "likes_count",
@@ -17,6 +22,15 @@ def _sha256(text):
     if text is None:
         return None
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _parse_source_date(raw):
+    if not raw:
+        return None
+    try:
+        return datetime.datetime.strptime(raw, SOURCE_DATE_FORMAT).date()
+    except ValueError:
+        return None
 
 
 def _get_or_create(session, model, name):
@@ -31,12 +45,52 @@ def _get_or_create(session, model, name):
     return obj
 
 
+def _record_quality_events(session, legal_act_id, previous_counters, values, now):
+    events = []
+
+    url = values["url"]
+    parsed_url = urlsplit(url)
+    if not parsed_url.scheme or not parsed_url.netloc or not url.startswith(BASE_URL):
+        events.append(("invalid_url", "url", f"malformed or unexpected host: {url}"))
+
+    parsed_dates = {}
+    for field in ("created_date", "discussion_end_date"):
+        raw = values[field]
+        if raw:
+            parsed_date = _parse_source_date(raw)
+            if parsed_date is None:
+                events.append(("invalid_date", field, f"unparsable value: {raw!r}"))
+            else:
+                parsed_dates[field] = parsed_date
+
+    if "created_date" in parsed_dates and "discussion_end_date" in parsed_dates:
+        if parsed_dates["discussion_end_date"] < parsed_dates["created_date"]:
+            events.append((
+                "end_before_start", "discussion_end_date",
+                f"{values['discussion_end_date']} is before {values['created_date']}",
+            ))
+
+    if previous_counters is not None:
+        for field in ("comments_total", "likes_count", "dislikes_count"):
+            old_value = previous_counters[field]
+            new_value = values[field]
+            if (old_value is None) != (new_value is None):
+                events.append(("counter_null_flip", field, f"{old_value} -> {new_value}"))
+
+    for event_type, field_name, detail in events:
+        session.add(QualityEvent(
+            legal_act_id=legal_act_id, event_type=event_type,
+            field_name=field_name, detail=detail, detected_at=now,
+        ))
+
+
 def upsert_legal_act(session, external_id, section, url, fields, now):
     existing = session.execute(
         select(LegalAct).where(LegalAct.external_id == external_id)
     ).scalar_one_or_none()
 
     previous_snapshot = None
+    previous_counters = None
     if existing is not None:
         previous_snapshot = session.execute(
             select(LegalActSnapshot)
@@ -44,6 +98,11 @@ def upsert_legal_act(session, external_id, section, url, fields, now):
             .order_by(LegalActSnapshot.captured_at.desc())
             .limit(1)
         ).scalar_one_or_none()
+        previous_counters = {
+            "comments_total": existing.comments_total,
+            "likes_count": existing.likes_count,
+            "dislikes_count": existing.dislikes_count,
+        }
 
     title_kk = fields.get("title_kk") or (existing.title_kk if existing else None)
     raw_html_ru = fields.get("raw_html_ru")
@@ -107,6 +166,8 @@ def upsert_legal_act(session, external_id, section, url, fields, now):
             likes_count=values["likes_count"],
             dislikes_count=values["dislikes_count"],
         ))
+
+    _record_quality_events(session, legal_act.id, previous_counters, values, now)
 
     session.commit()
     return legal_act.id

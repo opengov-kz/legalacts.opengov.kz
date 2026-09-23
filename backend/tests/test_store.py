@@ -343,3 +343,142 @@ def test_link_legal_act_category_is_idempotent(db_session):
     ).all()
     assert len(rows) == 1
     assert rows[0].first_seen_at == T1
+
+
+def test_upsert_legal_act_records_invalid_url_event(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://not-legalacts.example/view?id=1", _fields(), T1,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="invalid_url",
+    ).all()
+    assert len(events) == 1
+    assert events[0].field_name == "url"
+
+
+def test_upsert_legal_act_does_not_record_invalid_url_event_for_real_url(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1", _fields(), T1,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="invalid_url",
+    ).count() == 0
+
+
+def test_upsert_legal_act_records_invalid_date_event(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(created_date="not-a-date", discussion_end_date="09/09/2026"), T1,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="invalid_date",
+    ).all()
+    assert len(events) == 1
+    assert events[0].field_name == "created_date"
+
+
+def test_upsert_legal_act_does_not_record_invalid_date_event_for_valid_dates(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(created_date="01/01/2026", discussion_end_date="09/09/2026"), T1,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="invalid_date",
+    ).count() == 0
+
+
+def test_upsert_legal_act_records_end_before_start_event(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(created_date="09/09/2026", discussion_end_date="01/01/2026"), T1,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="end_before_start",
+    ).all()
+    assert len(events) == 1
+    assert events[0].field_name == "discussion_end_date"
+
+
+def test_upsert_legal_act_does_not_record_end_before_start_when_dates_ordered_correctly(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(created_date="01/01/2026", discussion_end_date="09/09/2026"), T1,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="end_before_start",
+    ).count() == 0
+
+
+def test_upsert_legal_act_first_save_does_not_record_counter_null_flip(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=None), T1,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="counter_null_flip",
+    ).count() == 0
+
+
+def test_upsert_legal_act_records_counter_null_flip_value_to_null(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=42), T1,
+    )
+    store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=None), T2,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="counter_null_flip", field_name="comments_total",
+    ).all()
+    assert len(events) == 1
+    assert events[0].detail == "42 -> None"
+
+
+def test_upsert_legal_act_records_counter_null_flip_null_to_value(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=None), T1,
+    )
+    store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=42), T2,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="counter_null_flip", field_name="comments_total",
+    ).all()
+    assert len(events) == 1
+
+
+def test_upsert_legal_act_does_not_record_counter_null_flip_when_both_are_numbers(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=42), T1,
+    )
+    store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=43), T2,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="counter_null_flip", field_name="comments_total",
+    ).count() == 0
