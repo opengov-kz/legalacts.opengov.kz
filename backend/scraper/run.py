@@ -133,6 +133,7 @@ def process_list_entry(session, fetcher, url, section="npa"):
         queue.enqueue(session, card["url"], "document", discovered, section=section)
 
     total_pages = list_page.parse_total_pages(html)
+    store.record_list_total_pages_change(session, _set_page_param(url, 1), total_pages, discovered)
     current_page = _current_page(url)
     if current_page < total_pages:
         queue.enqueue(
@@ -166,6 +167,7 @@ def process_category_list_entry(session, fetcher, url, section="npa"):
             store.link_legal_act_category(session, legal_act_id, category.id, discovered)
 
     total_pages = list_page.parse_total_pages(html)
+    store.record_list_total_pages_change(session, _set_page_param(url, 1), total_pages, discovered)
     current_page = _current_page(url)
     if current_page < total_pages:
         queue.enqueue(
@@ -197,6 +199,7 @@ def process_document_entry(session, fetcher, url, section="npa"):
 
     timestamp = now()
     legal_act_id = store.upsert_legal_act(session, external_id, section, url, fields, timestamp)
+    store.record_unrecognized_html_structure(session, legal_act_id, fields.get("template_recognized"), timestamp)
     store.upsert_comments(session, legal_act_id, parsed_comments, DEFAULT_COMMENT_CHANNEL, timestamp)
 
     if section != "arv":

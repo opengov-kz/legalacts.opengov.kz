@@ -102,6 +102,22 @@ def test_process_list_entry_stops_pagination_at_last_page(db_session):
     assert len(page_rows) == 0
 
 
+def test_process_list_entry_records_total_pages_decrease(db_session):
+    list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/list?status=IN_ARCHIVE"
+    fetcher = StubFetcher({url: list_html})
+
+    canonical_url = run_module._set_page_param(url, 1)
+    store.record_list_total_pages_change(db_session, canonical_url, 99999, T1)
+
+    run_module.process_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").all()
+    assert len(events) == 1
+    assert events[0].detail == "99999 -> 29852"
+
+
 def test_seed_category_queue_enqueues_category_list_for_every_seed_and_category(db_session):
     run_module.seed_category_queue(db_session)
 
@@ -156,6 +172,42 @@ def test_process_document_entry_stores_document_and_comments(db_session):
     assert len(comment_rows) == 20
     assert all(row.comment_channel == run_module.DEFAULT_COMMENT_CHANNEL for row in comment_rows)
     assert fetcher.lang_calls == ["kk", "ru"]
+
+
+def test_process_document_entry_records_unrecognized_html_structure(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    unknown_html = '<html><body><div class="totally-unknown-template"><h1>Nope</h1></div></body></html>'
+    fetcher = StubFetcher({url: [unknown_html, unknown_html]})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import LegalAct, QualityEvent
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
+    ).fetchone()
+
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=act.id, event_type="unrecognized_html_structure",
+    ).all()
+    assert len(events) == 1
+
+
+def test_process_document_entry_does_not_record_unrecognized_html_structure_for_known_template(db_session):
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    fetcher = StubFetcher({url: [ru_html, kk_html]})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import LegalAct, QualityEvent
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
+    ).fetchone()
+
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=act.id, event_type="unrecognized_html_structure",
+    ).count() == 0
 
 
 def test_process_document_entry_records_comments_total_mismatch(db_session):
