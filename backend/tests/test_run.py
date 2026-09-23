@@ -216,6 +216,7 @@ def test_process_document_entry_collects_full_version_chain(db_session):
         .where(DocumentVersion.legal_act_id == act.id)
         .order_by(DocumentVersion.version_number)
     ).fetchall()
+    assert len(versions) == 2
     versions_by_external_id = {v.external_id: v for v in versions}
     assert versions_by_external_id[100].version_number == 1
     assert versions_by_external_id[200].version_number == 2
@@ -226,6 +227,27 @@ def test_process_document_entry_collects_full_version_chain(db_session):
 
     assert fetcher.calls.count(version2_url) == 1
     assert fetcher.calls.count(version1_url) == 1
+
+
+def test_collect_prior_versions_stops_on_404_without_storing_garbage(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    version1_url = "https://legalacts.egov.kz/application/viewcardhistory?id=100"
+
+    main_html = (
+        '<div class="view-npa"><h2>Test Act</h2>'
+        '<div class="blog-info"><span class="gov-parent">Main Body</span></div>'
+        '<small><b>Версия проекта:</b> Версия 2 '
+        '( <a href="/application/viewcardhistory?id=100">Версия 1</a> )</small>'
+        '</div>'
+    )
+
+    fetcher = StubFetcher({url: main_html}, status_codes={version1_url: 404})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import DocumentVersion
+    versions = db_session.execute(DocumentVersion.__table__.select()).fetchall()
+    assert versions == []
 
 
 def test_process_document_entry_does_not_refetch_known_versions_on_recrawl(db_session):

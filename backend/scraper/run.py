@@ -64,6 +64,8 @@ def _collect_prior_versions(session, fetcher, legal_act_id, next_url, timestamp)
         if store.document_version_exists(session, external_id):
             return
         response = fetcher.get(full_url)
+        if response.status_code == 404:
+            return
         html = response.text
         fields = document_page.parse_document_page(html)
         fields["raw_html_ru"] = html
