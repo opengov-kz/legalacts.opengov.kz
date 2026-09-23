@@ -68,6 +68,24 @@ def test_parse_document_page_falls_back_to_government_body_label_when_gov_parent
     assert data["government_body"] == "город Караганды"
 
 
+def test_parse_document_page_reports_template_recognized_for_known_templates():
+    data = document_page.parse_document_page(_read("document_no_comments.html"))
+    assert data["template_recognized"] is True
+
+    data_arv = document_page.parse_document_page(_read("document_arv_conclusion.html"))
+    assert data_arv["template_recognized"] is True
+
+
+def test_parse_document_page_reports_template_not_recognized_for_unknown_html():
+    html = (
+        '<html><body><div class="some-other-template">'
+        '<h1>Not a known template</h1></div></body></html>'
+    )
+    data = document_page.parse_document_page(html)
+    assert data["template_recognized"] is False
+    assert data["title"] is None
+
+
 def test_parse_version_info_returns_number_and_previous_url_when_present():
     html = (
         '<div class="view-npa"><h2>Test</h2>'

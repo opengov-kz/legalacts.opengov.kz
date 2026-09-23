@@ -43,6 +43,7 @@ def parse_document_page(html):
 
     title_el = soup.select_one(".view-npa h2, .blog-item h2")
     title = title_el.get_text(strip=True) if title_el else None
+    template_recognized = title_el is not None
 
     fields = {key: _label_text(soup, label) for key, label in LABEL_MAP.items()}
 
@@ -58,6 +59,7 @@ def parse_document_page(html):
 
     return {
         "title": title,
+        "template_recognized": template_recognized,
         "status": fields["status"],
         "doc_type": fields["doc_type"],
         "created_date": fields["created_date"],
