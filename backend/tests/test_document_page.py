@@ -56,3 +56,43 @@ def test_parse_document_page_reads_arv_conclusion_template():
     assert data["comments_total"] == 0
     assert data["likes_count"] == 1
     assert data["dislikes_count"] == 0
+
+
+def test_parse_document_page_falls_back_to_government_body_label_when_gov_parent_absent():
+    html = (
+        '<div class="view-npa"><h2>Test</h2>'
+        '<small><b>Государственный орган НПА:</b> город Караганды</small>'
+        '</div>'
+    )
+    data = document_page.parse_document_page(html)
+    assert data["government_body"] == "город Караганды"
+
+
+def test_parse_version_info_returns_number_and_previous_url_when_present():
+    html = (
+        '<div class="view-npa"><h2>Test</h2>'
+        '<small><b>Версия проекта:</b> Версия 2 '
+        '( <a href="/application/viewcardhistory?id=52440">Версия 1</a> )</small>'
+        '</div>'
+    )
+    data = document_page.parse_version_info(html)
+    assert data["version_number"] == 2
+    assert data["previous_version_url"] == "/application/viewcardhistory?id=52440"
+
+
+def test_parse_version_info_returns_none_url_for_earliest_version():
+    html = (
+        '<div class="view-npa"><h2>Test</h2>'
+        '<small><b>Версия проекта:</b> Версия 1</small>'
+        '</div>'
+    )
+    data = document_page.parse_version_info(html)
+    assert data["version_number"] == 1
+    assert data["previous_version_url"] is None
+
+
+def test_parse_version_info_returns_none_when_field_absent():
+    html = '<div class="view-npa"><h2>Test</h2></div>'
+    data = document_page.parse_version_info(html)
+    assert data["version_number"] is None
+    assert data["previous_version_url"] is None
