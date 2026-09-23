@@ -573,3 +573,99 @@ def test_record_comments_total_mismatch_skips_when_comments_total_is_none(db_ses
     assert db_session.query(QualityEvent).filter_by(
         legal_act_id=legal_act_id, event_type="comments_total_mismatch",
     ).count() == 0
+
+
+def test_upsert_legal_act_records_new_status_event(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(status="Совершенно новый статус XYZ"), T1,
+    )
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="new_status",
+    ).all()
+    assert len(events) == 1
+    assert events[0].detail == "Совершенно новый статус XYZ"
+
+
+def test_upsert_legal_act_does_not_record_new_status_event_for_known_status(db_session):
+    store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(status="Status_Value_001"), T1,
+    )
+    legal_act_id_2 = store.upsert_legal_act(
+        db_session, 2, "npa", "https://legalacts.egov.kz/npa/view?id=2",
+        _fields(status="Status_Value_001"), T1,
+    )
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id_2, event_type="new_status",
+    ).count() == 0
+
+
+def test_record_list_total_pages_change_first_call_creates_baseline_no_event(db_session):
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T1)
+
+    from db.models import ListPageTotal, QualityEvent
+    row = db_session.query(ListPageTotal).filter_by(url="https://legalacts.egov.kz/list").one()
+    assert row.total_pages == 100
+    assert db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").count() == 0
+
+
+def test_record_list_total_pages_change_decrease_creates_event(db_session):
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T1)
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 80, T2)
+
+    from db.models import ListPageTotal, QualityEvent
+    events = db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").all()
+    assert len(events) == 1
+    assert events[0].legal_act_id is None
+    assert events[0].detail == "100 -> 80"
+
+    row = db_session.query(ListPageTotal).filter_by(url="https://legalacts.egov.kz/list").one()
+    assert row.total_pages == 80
+
+
+def test_record_list_total_pages_change_increase_no_event(db_session):
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T1)
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 150, T2)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").count() == 0
+
+
+def test_record_list_total_pages_change_equal_no_event(db_session):
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T1)
+    store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T2)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").count() == 0
+
+
+def test_record_unrecognized_html_structure_creates_event_when_not_recognized(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1", _fields(), T1,
+    )
+
+    store.record_unrecognized_html_structure(db_session, legal_act_id, False, T1)
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="unrecognized_html_structure",
+    ).all()
+    assert len(events) == 1
+
+
+def test_record_unrecognized_html_structure_no_event_when_recognized(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1", _fields(), T1,
+    )
+
+    store.record_unrecognized_html_structure(db_session, legal_act_id, True, T1)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="unrecognized_html_structure",
+    ).count() == 0

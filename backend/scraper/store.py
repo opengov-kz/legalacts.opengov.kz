@@ -4,8 +4,8 @@ import hashlib
 from sqlalchemy import func, select
 
 from db.models import (
-    ActType, Category, Comment, DocumentVersion, GovernmentBody, LegalAct,
-    LegalActCategory, LegalActSnapshot, QualityEvent, Report,
+    ActType, Category, Comment, DocumentVersion, GovernmentBody, KnownStatusValue,
+    LegalAct, LegalActCategory, LegalActSnapshot, ListPageTotal, QualityEvent, Report,
 )
 
 BASE_URL = "https://legalacts.egov.kz"
@@ -74,6 +74,15 @@ def _record_quality_events(session, legal_act_id, previous_counters, values, now
             new_value = values[field]
             if (old_value is None) != (new_value is None):
                 events.append(("counter_null_flip", field, f"{old_value} -> {new_value}"))
+
+    status = values["status"]
+    if status:
+        known_status = session.execute(
+            select(KnownStatusValue).where(KnownStatusValue.value == status)
+        ).scalar_one_or_none()
+        if known_status is None:
+            session.add(KnownStatusValue(value=status, first_seen_at=now))
+            events.append(("new_status", "status", status))
 
     for event_type, field_name, detail in events:
         session.add(QualityEvent(
@@ -297,3 +306,36 @@ def record_comments_total_mismatch(session, legal_act_id, comments_total, now):
             detected_at=now,
         ))
         session.commit()
+
+
+def record_list_total_pages_change(session, url, total_pages, now):
+    existing = session.execute(
+        select(ListPageTotal).where(ListPageTotal.url == url)
+    ).scalar_one_or_none()
+
+    if existing is not None and total_pages < existing.total_pages:
+        session.add(QualityEvent(
+            legal_act_id=None, event_type="list_total_pages_decreased",
+            field_name="total_pages",
+            detail=f"{existing.total_pages} -> {total_pages}",
+            detected_at=now,
+        ))
+
+    if existing is not None:
+        existing.total_pages = total_pages
+        existing.updated_at = now
+    else:
+        session.add(ListPageTotal(url=url, total_pages=total_pages, updated_at=now))
+
+    session.commit()
+
+
+def record_unrecognized_html_structure(session, legal_act_id, template_recognized, now):
+    if template_recognized:
+        return
+    session.add(QualityEvent(
+        legal_act_id=legal_act_id, event_type="unrecognized_html_structure",
+        field_name="title", detail="neither .view-npa nor .blog-item template matched",
+        detected_at=now,
+    ))
+    session.commit()
