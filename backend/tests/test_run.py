@@ -115,7 +115,7 @@ def test_process_list_entry_records_total_pages_decrease(db_session):
     from db.models import QualityEvent
     events = db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").all()
     assert len(events) == 1
-    assert events[0].detail == "99999 -> 29852"
+    assert events[0].detail == f"{canonical_url}: 99999 -> 29852"
 
 
 def test_seed_category_queue_enqueues_category_list_for_every_seed_and_category(db_session):

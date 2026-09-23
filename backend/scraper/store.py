@@ -308,16 +308,19 @@ def record_comments_total_mismatch(session, legal_act_id, comments_total, now):
         session.commit()
 
 
-def record_list_total_pages_change(session, url, total_pages, now):
+# canonical_url must already be page=1-normalized by the caller (see
+# run.py's _set_page_param(url, 1)) — this function does no URL parsing
+# of its own, by design (store.py must not import run.py's URL helpers).
+def record_list_total_pages_change(session, canonical_url, total_pages, now):
     existing = session.execute(
-        select(ListPageTotal).where(ListPageTotal.url == url)
+        select(ListPageTotal).where(ListPageTotal.url == canonical_url)
     ).scalar_one_or_none()
 
     if existing is not None and total_pages < existing.total_pages:
         session.add(QualityEvent(
             legal_act_id=None, event_type="list_total_pages_decreased",
             field_name="total_pages",
-            detail=f"{existing.total_pages} -> {total_pages}",
+            detail=f"{canonical_url}: {existing.total_pages} -> {total_pages}",
             detected_at=now,
         ))
 
@@ -325,7 +328,7 @@ def record_list_total_pages_change(session, url, total_pages, now):
         existing.total_pages = total_pages
         existing.updated_at = now
     else:
-        session.add(ListPageTotal(url=url, total_pages=total_pages, updated_at=now))
+        session.add(ListPageTotal(url=canonical_url, total_pages=total_pages, updated_at=now))
 
     session.commit()
 

@@ -622,7 +622,7 @@ def test_record_list_total_pages_change_decrease_creates_event(db_session):
     events = db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").all()
     assert len(events) == 1
     assert events[0].legal_act_id is None
-    assert events[0].detail == "100 -> 80"
+    assert events[0].detail == "https://legalacts.egov.kz/list: 100 -> 80"
 
     row = db_session.query(ListPageTotal).filter_by(url="https://legalacts.egov.kz/list").one()
     assert row.total_pages == 80
