@@ -5,7 +5,7 @@ def test_migration_creates_expected_tables(pg_engine):
     tables = set(inspect(pg_engine).get_table_names())
     assert {
         "legal_acts", "comments", "crawl_queue",
-        "government_bodies", "act_types", "legal_act_snapshots", "document_versions",
+        "government_bodies", "act_types", "legal_act_snapshots", "document_versions", "reports",
     }.issubset(tables)
 
 
@@ -60,3 +60,8 @@ def test_document_versions_table_has_expected_columns(db_session):
         "status", "act_type_id", "government_body_id", "created_date",
         "discussion_end_date", "raw_html_ru", "first_seen_at",
     }
+
+
+def test_reports_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("reports")}
+    assert columns == {"id", "legal_act_id", "raw_html_ru", "first_seen_at"}
