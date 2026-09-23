@@ -16,6 +16,7 @@ USER_AGENT = (
 )
 STALE_AFTER_DAYS = 7
 DEFAULT_COMMENT_CHANNEL = 6  # вкладка «Комментарий» (typeComment=6)
+EXPERT_COMMENT_CHANNELS = (1, 3, 4, 7, 8, 9, 10)  # остальные вкладки экспертного участия
 
 SEED_LIST_URLS = [
     ("npa", f"{BASE_URL}/list"),
@@ -46,6 +47,13 @@ def _set_page_param(url, page):
     parts = urlsplit(url)
     query = dict(parse_qsl(parts.query))
     query["page"] = str(page)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _with_type_comment(url, channel):
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query))
+    query["typeComment"] = str(channel)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
@@ -92,6 +100,12 @@ def process_document_entry(session, fetcher, url, section="npa"):
     timestamp = now()
     legal_act_id = store.upsert_legal_act(session, external_id, section, url, fields, timestamp)
     store.upsert_comments(session, legal_act_id, parsed_comments, DEFAULT_COMMENT_CHANNEL, timestamp)
+
+    if section != "arv":
+        for channel in EXPERT_COMMENT_CHANNELS:
+            channel_response = fetcher.get(_with_type_comment(url, channel))
+            channel_comments = comments_parser.parse_comments(channel_response.text)
+            store.upsert_comments(session, legal_act_id, channel_comments, channel, timestamp)
 
 
 def run(database_url, limit=None):

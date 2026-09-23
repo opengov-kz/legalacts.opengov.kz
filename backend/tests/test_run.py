@@ -116,6 +116,59 @@ def test_process_document_entry_stores_document_and_comments(db_session):
     assert fetcher.lang_calls == ["kk", "ru"]
 
 
+def test_process_document_entry_fetches_expert_participation_channels(db_session):
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    expert_comment_html = (
+        '<div class="main-comments"><div class="media">'
+        '<div class="media-body"><h4 class="media-heading">Expert A 01/09 - 10:00</h4>'
+        '<p id="500">Expert opinion text</p></div></div></div>'
+    )
+    fetcher = StubFetcher({
+        url: [ru_html, kk_html],
+        f"{url}&typeComment=8": expert_comment_html,
+    })
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Comment, LegalAct
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
+    ).fetchone()
+
+    expert_comments = db_session.execute(
+        Comment.__table__.select().where(
+            Comment.legal_act_id == act.id, Comment.comment_channel == 8,
+        )
+    ).fetchall()
+    assert len(expert_comments) == 1
+    assert expert_comments[0].body == "Expert opinion text"
+
+    default_comments = db_session.execute(
+        Comment.__table__.select().where(
+            Comment.legal_act_id == act.id,
+            Comment.comment_channel == run_module.DEFAULT_COMMENT_CHANNEL,
+        )
+    ).fetchall()
+    assert len(default_comments) == 20
+
+    called_channel_urls = {u for u in fetcher.calls if "typeComment=" in u}
+    assert called_channel_urls == {
+        f"{url}&typeComment={channel}" for channel in run_module.EXPERT_COMMENT_CHANNELS
+    }
+
+
+def test_process_document_entry_skips_expert_channels_for_arv_section(db_session):
+    ru_html = (FIXTURES / "document_arv_conclusion.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/viewArvConclusion?id=99999"
+    fetcher = StubFetcher({url: [ru_html, ru_html]})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="arv")
+
+    assert not any("typeComment=" in call_url for call_url in fetcher.calls)
+
+
 def test_process_document_entry_404_stores_nothing(db_session):
     url = "https://legalacts.egov.kz/npa/view?id=404404"
     fetcher = StubFetcher({}, status_codes={url: 404})
