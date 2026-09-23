@@ -65,3 +65,18 @@ def test_document_versions_table_has_expected_columns(db_session):
 def test_reports_table_has_expected_columns(db_session):
     columns = {col["name"] for col in inspect(db_session.bind).get_columns("reports")}
     assert columns == {"id", "legal_act_id", "raw_html_ru", "first_seen_at"}
+
+
+def test_migration_creates_category_tables(pg_engine):
+    tables = set(inspect(pg_engine).get_table_names())
+    assert {"categories", "legal_act_categories"}.issubset(tables)
+
+
+def test_categories_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("categories")}
+    assert columns == {"id", "external_id", "name"}
+
+
+def test_legal_act_categories_table_has_expected_columns(db_session):
+    columns = {col["name"] for col in inspect(db_session.bind).get_columns("legal_act_categories")}
+    assert columns == {"id", "legal_act_id", "category_id", "first_seen_at"}

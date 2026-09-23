@@ -146,6 +146,29 @@ class Report(Base):
     legal_act = relationship("LegalAct", back_populates="report")
 
 
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True)
+    external_id = Column(Integer, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+
+
+class LegalActCategory(Base):
+    __tablename__ = "legal_act_categories"
+    __table_args__ = (
+        UniqueConstraint(
+            "legal_act_id", "category_id",
+            name="uq_legal_act_categories_legal_act_id_category_id",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    legal_act_id = Column(Integer, ForeignKey("legal_acts.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class CrawlQueueEntry(Base):
     __tablename__ = "crawl_queue"
 
