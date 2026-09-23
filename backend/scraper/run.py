@@ -135,6 +135,31 @@ def process_list_entry(session, fetcher, url, section="npa"):
         )
 
 
+def process_category_list_entry(session, fetcher, url, section="npa"):
+    response = fetcher.get(url)
+    if response.status_code == 404:
+        return
+    html = response.text
+
+    category_id = int(dict(parse_qsl(urlsplit(url).query))["categoryId"])
+    category_name = list_page.parse_category_name(html, category_id) or CATEGORY_NAMES.get(category_id)
+    category = store.get_or_create_category(session, category_id, category_name)
+
+    discovered = now()
+    for card in list_page.parse_list_page(html):
+        external_id = int(dict(parse_qsl(urlsplit(card["url"]).query))["id"])
+        legal_act_id = store.legal_act_id_for_external_id(session, external_id)
+        if legal_act_id is not None:
+            store.link_legal_act_category(session, legal_act_id, category.id, discovered)
+
+    total_pages = list_page.parse_total_pages(html)
+    current_page = _current_page(url)
+    if current_page < total_pages:
+        queue.enqueue(
+            session, _set_page_param(url, current_page + 1), "category_list", discovered, section=section,
+        )
+
+
 def process_document_entry(session, fetcher, url, section="npa"):
     ru_response = fetcher.get(url)
     if ru_response.status_code == 404:

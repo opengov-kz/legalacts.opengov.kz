@@ -4,10 +4,26 @@ from types import SimpleNamespace
 
 from scraper import queue
 from scraper import run as run_module
+from scraper import store
 from db.session import create_engine_and_session_factory
 
 FIXTURES = Path(__file__).parent / "fixtures"
 UTC = datetime.timezone.utc
+T1 = datetime.datetime(2026, 9, 1, tzinfo=UTC)
+
+
+def _fields(**overrides):
+    base = dict(
+        title_ru="Title_RU_001", title_kk="Title_KK_001",
+        status="Status_Value_001", doc_type="DocType_Value_001",
+        government_body="Body_Value_001", created_date="2026-01-01",
+        discussion_end_date="2026-12-31", comments_total=42,
+        likes_count=99, dislikes_count=88,
+        raw_html_ru="<html>content_ru_001</html>",
+        raw_html_kk="<html>content_kk_001</html>",
+    )
+    base.update(overrides)
+    return base
 
 
 class StubFetcher:
@@ -421,6 +437,79 @@ def test_process_list_entry_404_enqueues_nothing(db_session):
     run_module.process_list_entry(db_session, fetcher, url, section="npa")
 
     from db.models import CrawlQueueEntry
+    assert db_session.execute(CrawlQueueEntry.__table__.select()).fetchall() == []
+
+
+def test_process_category_list_entry_links_known_act(db_session):
+    store.upsert_legal_act(db_session, 15908401, "npa", "url1", _fields(), T1)
+
+    list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    fetcher = StubFetcher({url: list_html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Category, LegalAct, LegalActCategory
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15908401)
+    ).fetchone()
+    category = db_session.query(Category).filter_by(external_id=346).one()
+    link = db_session.query(LegalActCategory).filter_by(
+        legal_act_id=act.id, category_id=category.id,
+    ).one_or_none()
+    assert link is not None
+    assert category.name == "Информационные технологии"
+
+
+def test_process_category_list_entry_skips_unknown_act(db_session):
+    list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    fetcher = StubFetcher({url: list_html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import LegalAct, LegalActCategory
+    assert db_session.execute(LegalAct.__table__.select()).fetchall() == []
+    assert db_session.execute(LegalActCategory.__table__.select()).fetchall() == []
+
+
+def test_process_category_list_entry_falls_back_to_static_name_when_dropdown_missing(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 100, "npa", "url1", _fields(), T1)
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    html = '<div class="contentlist"><h3><a href="/npa/view?id=100">Title</a></h3></div>'
+    fetcher = StubFetcher({url: html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Category
+    category = db_session.query(Category).filter_by(external_id=346).one()
+    assert category.name == run_module.CATEGORY_NAMES[346]
+
+
+def test_process_category_list_entry_enqueues_next_page(db_session):
+    list_html = (FIXTURES / "list_page.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    fetcher = StubFetcher({url: list_html})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import CrawlQueueEntry
+    next_page = db_session.execute(
+        CrawlQueueEntry.__table__.select().where(CrawlQueueEntry.page_type == "category_list")
+    ).fetchall()
+    assert len(next_page) == 1
+    assert "page=2" in next_page[0].url
+    assert "categoryId=346" in next_page[0].url
+
+
+def test_process_category_list_entry_404_enqueues_nothing(db_session):
+    url = "https://legalacts.egov.kz/list?categoryId=346"
+    fetcher = StubFetcher({}, status_codes={url: 404})
+
+    run_module.process_category_list_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Category, CrawlQueueEntry
+    assert db_session.execute(Category.__table__.select()).fetchall() == []
     assert db_session.execute(CrawlQueueEntry.__table__.select()).fetchall() == []
 
 
