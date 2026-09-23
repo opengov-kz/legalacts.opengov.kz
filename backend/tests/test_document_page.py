@@ -91,6 +91,18 @@ def test_parse_version_info_returns_none_url_for_earliest_version():
     assert data["previous_version_url"] is None
 
 
+def test_parse_version_info_ignores_linked_versions_own_number_when_current_page_blank():
+    html = (
+        '<div class="view-npa"><h2>Test</h2>'
+        '<small><b>Версия проекта:</b> '
+        '( <a href="/application/viewcardhistory?id=100">Версия 5</a> )</small>'
+        '</div>'
+    )
+    data = document_page.parse_version_info(html)
+    assert data["version_number"] is None
+    assert data["previous_version_url"] == "/application/viewcardhistory?id=100"
+
+
 def test_parse_version_info_returns_none_when_field_absent():
     html = '<div class="view-npa"><h2>Test</h2></div>'
     data = document_page.parse_version_info(html)

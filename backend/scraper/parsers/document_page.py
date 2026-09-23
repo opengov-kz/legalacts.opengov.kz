@@ -75,10 +75,13 @@ def parse_version_info(html):
         b = small.find("b")
         if b is None or b.get_text(strip=True) != VERSION_LABEL:
             continue
+        link = small.find("a", href=True)
+        previous_version_url = link["href"] if link else None
+        b.extract()
+        if link is not None:
+            link.extract()
         text = small.get_text(" ", strip=True)
         match = VERSION_NUMBER_RE.search(text)
         version_number = int(match.group(1)) if match else None
-        link = small.find("a", href=True)
-        previous_version_url = link["href"] if link else None
         return {"version_number": version_number, "previous_version_url": previous_version_url}
     return {"version_number": None, "previous_version_url": None}
