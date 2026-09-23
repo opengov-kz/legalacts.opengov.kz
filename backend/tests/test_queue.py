@@ -86,3 +86,17 @@ def test_requeue_stale_lists_resets_old_done_lists_only(db_session):
     from db.models import CrawlQueueEntry
     assert db_session.get(CrawlQueueEntry, "https://example.test/list-new").status == "done"
     assert db_session.get(CrawlQueueEntry, "https://example.test/doc").status == "done"
+
+
+def test_requeue_stale_lists_also_resets_old_done_category_lists(db_session):
+    queue.enqueue(db_session, "https://example.test/cat-old", "category_list", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    queue.enqueue(db_session, "https://example.test/cat-new", "category_list", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+    queue.mark_done(db_session, "https://example.test/cat-old", datetime.datetime(2026, 9, 1, tzinfo=UTC))
+    queue.mark_done(db_session, "https://example.test/cat-new", datetime.datetime(2026, 9, 14, tzinfo=UTC))
+
+    queue.requeue_stale_lists(db_session, datetime.datetime(2026, 9, 10, tzinfo=UTC))
+
+    assert queue.next_pending(db_session, "category_list") == "https://example.test/cat-old"
+
+    from db.models import CrawlQueueEntry
+    assert db_session.get(CrawlQueueEntry, "https://example.test/cat-new").status == "done"

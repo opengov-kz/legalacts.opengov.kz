@@ -66,7 +66,7 @@ def requeue_stale_lists(session, older_than_iso):
     session.execute(
         update(CrawlQueueEntry)
         .where(
-            CrawlQueueEntry.page_type == "list",
+            CrawlQueueEntry.page_type.in_(["list", "category_list"]),
             CrawlQueueEntry.status == "done",
             CrawlQueueEntry.processed_at < older_than_iso,
         )
