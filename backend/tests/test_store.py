@@ -635,6 +635,11 @@ def test_record_list_total_pages_change_increase_no_event(db_session):
     from db.models import QualityEvent
     assert db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").count() == 0
 
+    from db.models import ListPageTotal
+    row = db_session.query(ListPageTotal).filter_by(url="https://legalacts.egov.kz/list").one()
+    assert row.total_pages == 150
+    assert row.updated_at == T2
+
 
 def test_record_list_total_pages_change_equal_no_event(db_session):
     store.record_list_total_pages_change(db_session, "https://legalacts.egov.kz/list", 100, T1)
@@ -642,6 +647,11 @@ def test_record_list_total_pages_change_equal_no_event(db_session):
 
     from db.models import QualityEvent
     assert db_session.query(QualityEvent).filter_by(event_type="list_total_pages_decreased").count() == 0
+
+    from db.models import ListPageTotal
+    row = db_session.query(ListPageTotal).filter_by(url="https://legalacts.egov.kz/list").one()
+    assert row.total_pages == 100
+    assert row.updated_at == T2
 
 
 def test_record_unrecognized_html_structure_creates_event_when_not_recognized(db_session):
