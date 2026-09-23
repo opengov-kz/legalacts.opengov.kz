@@ -111,10 +111,10 @@ def test_parse_version_info_returns_none_when_field_absent():
 
 
 def test_parse_report_link_returns_href_when_present():
-    html = '<div class="view-npa"><h2>Test</h2><a href="/report?id=15906353">Посмотреть отчет</a></div>'
-    assert document_page.parse_report_link(html) == "/report?id=15906353"
+    data = document_page.parse_report_link(_read("document_with_comments.html"))
+    assert data == "/report?id=15906353"
 
 
 def test_parse_report_link_returns_none_when_absent():
-    html = '<div class="view-npa"><h2>Test</h2></div>'
-    assert document_page.parse_report_link(html) is None
+    data = document_page.parse_report_link(_read("document_no_comments.html"))
+    assert data is None

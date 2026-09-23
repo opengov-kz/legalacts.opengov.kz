@@ -134,7 +134,7 @@ def process_document_entry(session, fetcher, url, section="npa"):
         report_url = document_page.parse_report_link(ru_html)
         if report_url is not None and not store.report_exists(session, legal_act_id):
             report_response = fetcher.get(urljoin(BASE_URL, report_url))
-            if report_response.status_code != 404:
+            if report_response.status_code == 200 and report_response.text.strip():
                 store.upsert_report(session, legal_act_id, report_response.text, timestamp)
 
 
