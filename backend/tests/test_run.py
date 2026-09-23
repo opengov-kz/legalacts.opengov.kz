@@ -285,6 +285,97 @@ def test_process_document_entry_skips_version_chain_for_arv_section(db_session):
     assert not any("viewcardhistory" in call_url for call_url in fetcher.calls)
 
 
+def test_process_document_entry_collects_report_when_link_present(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    report_url = "https://legalacts.egov.kz/report?id=15906353"
+
+    main_html = (
+        '<div class="view-npa"><h2>Test Act</h2>'
+        '<div class="blog-info"><span class="gov-parent">Main Body</span></div>'
+        '<small><b>Статус:</b> Архив</small>'
+        '<a href="/report?id=15906353">Посмотреть отчет</a>'
+        '</div>'
+    )
+    report_html = "<html>report content</html>"
+
+    fetcher = StubFetcher({url: main_html, report_url: report_html})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import LegalAct, Report
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
+    ).fetchone()
+    report = db_session.execute(
+        Report.__table__.select().where(Report.legal_act_id == act.id)
+    ).fetchone()
+    assert report is not None
+    assert report.raw_html_ru == report_html
+
+
+def test_process_document_entry_does_not_refetch_existing_report(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    report_url = "https://legalacts.egov.kz/report?id=15906353"
+
+    main_html = (
+        '<div class="view-npa"><h2>Test Act</h2>'
+        '<div class="blog-info"><span class="gov-parent">Main Body</span></div>'
+        '<a href="/report?id=15906353">Посмотреть отчет</a>'
+        '</div>'
+    )
+    fetcher = StubFetcher({url: main_html, report_url: "<html>report</html>"})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    assert fetcher.calls.count(report_url) == 1
+
+
+def test_process_document_entry_skips_report_when_no_link(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+
+    main_html = (
+        '<div class="view-npa"><h2>Test Act</h2>'
+        '<div class="blog-info"><span class="gov-parent">Main Body</span></div>'
+        '</div>'
+    )
+    fetcher = StubFetcher({url: main_html})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Report
+    assert db_session.execute(Report.__table__.select()).fetchall() == []
+    assert not any("/report?id=" in call_url for call_url in fetcher.calls)
+
+
+def test_process_document_entry_skips_report_for_arv_section(db_session):
+    ru_html = (FIXTURES / "document_arv_conclusion.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/viewArvConclusion?id=99999"
+    fetcher = StubFetcher({url: [ru_html, ru_html]})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="arv")
+
+    assert not any("/report?id=" in call_url for call_url in fetcher.calls)
+
+
+def test_report_fetch_404_does_not_store_anything(db_session):
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    report_url = "https://legalacts.egov.kz/report?id=15906353"
+
+    main_html = (
+        '<div class="view-npa"><h2>Test Act</h2>'
+        '<div class="blog-info"><span class="gov-parent">Main Body</span></div>'
+        '<a href="/report?id=15906353">Посмотреть отчет</a>'
+        '</div>'
+    )
+    fetcher = StubFetcher({url: main_html}, status_codes={report_url: 404})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="npa")
+
+    from db.models import Report
+    assert db_session.execute(Report.__table__.select()).fetchall() == []
+
+
 def test_process_document_entry_404_stores_nothing(db_session):
     url = "https://legalacts.egov.kz/npa/view?id=404404"
     fetcher = StubFetcher({}, status_codes={url: 404})

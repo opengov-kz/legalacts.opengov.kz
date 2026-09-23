@@ -85,3 +85,9 @@ def parse_version_info(html):
         version_number = int(match.group(1)) if match else None
         return {"version_number": version_number, "previous_version_url": previous_version_url}
     return {"version_number": None, "previous_version_url": None}
+
+
+def parse_report_link(html):
+    soup = BeautifulSoup(html, "lxml")
+    link = soup.select_one('a[href^="/report?id="]')
+    return link["href"] if link else None

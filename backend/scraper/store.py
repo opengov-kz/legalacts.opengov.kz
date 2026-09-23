@@ -2,7 +2,7 @@ import hashlib
 
 from sqlalchemy import select
 
-from db.models import ActType, Comment, DocumentVersion, GovernmentBody, LegalAct, LegalActSnapshot
+from db.models import ActType, Comment, DocumentVersion, GovernmentBody, LegalAct, LegalActSnapshot, Report
 
 SNAPSHOT_TRIGGER_FIELDS = (
     "status", "discussion_end_date", "comments_total", "likes_count",
@@ -169,4 +169,15 @@ def upsert_document_version(session, legal_act_id, external_id, fields, version_
         raw_html_ru=fields.get("raw_html_ru"),
         first_seen_at=now,
     ))
+    session.commit()
+
+
+def report_exists(session, legal_act_id):
+    return session.execute(
+        select(Report.id).where(Report.legal_act_id == legal_act_id)
+    ).scalar_one_or_none() is not None
+
+
+def upsert_report(session, legal_act_id, raw_html_ru, now):
+    session.add(Report(legal_act_id=legal_act_id, raw_html_ru=raw_html_ru, first_seen_at=now))
     session.commit()

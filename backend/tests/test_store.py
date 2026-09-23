@@ -261,3 +261,22 @@ def test_upsert_document_version_stores_fields_and_reuses_lookup_rows(db_session
     # lookup rows with the same names — must be reused, not duplicated.
     assert db_session.query(GovernmentBody).filter_by(name="Body_Value_001").count() == 1
     assert db_session.query(ActType).filter_by(name="DocType_Value_001").count() == 1
+
+
+def test_report_exists_returns_false_before_insert_and_true_after(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+    assert store.report_exists(db_session, legal_act_id) is False
+
+    store.upsert_report(db_session, legal_act_id, "<html>report</html>", T1)
+    assert store.report_exists(db_session, legal_act_id) is True
+
+
+def test_upsert_report_stores_raw_html_and_first_seen_at(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(), T1)
+
+    store.upsert_report(db_session, legal_act_id, "<html>report</html>", T1)
+
+    from db.models import Report
+    row = db_session.query(Report).filter_by(legal_act_id=legal_act_id).one()
+    assert row.raw_html_ru == "<html>report</html>"
+    assert row.first_seen_at == T1

@@ -55,6 +55,7 @@ class LegalAct(Base):
     document_versions = relationship(
         "DocumentVersion", back_populates="legal_act", order_by="DocumentVersion.version_number"
     )
+    report = relationship("Report", back_populates="legal_act", uselist=False)
 
 
 class Comment(Base):
@@ -132,6 +133,17 @@ class DocumentVersion(Base):
     first_seen_at = Column(DateTime(timezone=True), nullable=False)
 
     legal_act = relationship("LegalAct", back_populates="document_versions")
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True)
+    legal_act_id = Column(Integer, ForeignKey("legal_acts.id"), nullable=False, unique=True)
+    raw_html_ru = Column(Text)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+    legal_act = relationship("LegalAct", back_populates="report")
 
 
 class CrawlQueueEntry(Base):

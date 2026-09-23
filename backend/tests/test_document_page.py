@@ -108,3 +108,13 @@ def test_parse_version_info_returns_none_when_field_absent():
     data = document_page.parse_version_info(html)
     assert data["version_number"] is None
     assert data["previous_version_url"] is None
+
+
+def test_parse_report_link_returns_href_when_present():
+    data = document_page.parse_report_link(_read("document_with_comments.html"))
+    assert data == "/report?id=15906353"
+
+
+def test_parse_report_link_returns_none_when_absent():
+    data = document_page.parse_report_link(_read("document_no_comments.html"))
+    assert data is None
