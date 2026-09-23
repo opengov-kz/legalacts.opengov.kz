@@ -500,3 +500,76 @@ def test_upsert_legal_act_records_invalid_date_event_for_non_string_date(db_sess
         legal_act_id=legal_act_id, event_type="invalid_date", field_name="created_date",
     ).all()
     assert len(events) == 1
+
+
+def _comment(external_id, **overrides):
+    base = dict(
+        external_id=external_id, parent_external_id=None, author_name="A",
+        body="text", article_ref=None, status=None, commented_at_raw="10/09 - 11:05",
+    )
+    base.update(overrides)
+    return base
+
+
+def test_record_comments_total_mismatch_creates_event_when_counts_differ(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=5), T1,
+    )
+    store.upsert_comments(db_session, legal_act_id, [_comment(100), _comment(101)], 6, T1)
+
+    store.record_comments_total_mismatch(db_session, legal_act_id, 5, T1)
+
+    from db.models import QualityEvent
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="comments_total_mismatch",
+    ).all()
+    assert len(events) == 1
+    assert events[0].field_name == "comments_total"
+    assert events[0].detail == "source=5, collected=2"
+
+
+def test_record_comments_total_mismatch_no_event_when_counts_match(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=2), T1,
+    )
+    store.upsert_comments(db_session, legal_act_id, [_comment(100), _comment(101)], 6, T1)
+
+    store.record_comments_total_mismatch(db_session, legal_act_id, 2, T1)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="comments_total_mismatch",
+    ).count() == 0
+
+
+def test_record_comments_total_mismatch_counts_across_all_channels(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=2), T1,
+    )
+    store.upsert_comments(db_session, legal_act_id, [_comment(100)], 6, T1)
+    store.upsert_comments(db_session, legal_act_id, [_comment(200)], 8, T1)
+
+    store.record_comments_total_mismatch(db_session, legal_act_id, 2, T1)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="comments_total_mismatch",
+    ).count() == 0
+
+
+def test_record_comments_total_mismatch_skips_when_comments_total_is_none(db_session):
+    legal_act_id = store.upsert_legal_act(
+        db_session, 1, "npa", "https://legalacts.egov.kz/npa/view?id=1",
+        _fields(comments_total=None), T1,
+    )
+    store.upsert_comments(db_session, legal_act_id, [_comment(100)], 6, T1)
+
+    store.record_comments_total_mismatch(db_session, legal_act_id, None, T1)
+
+    from db.models import QualityEvent
+    assert db_session.query(QualityEvent).filter_by(
+        legal_act_id=legal_act_id, event_type="comments_total_mismatch",
+    ).count() == 0

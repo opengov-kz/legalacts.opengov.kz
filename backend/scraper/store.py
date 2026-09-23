@@ -1,7 +1,7 @@
 import datetime
 import hashlib
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from db.models import (
     ActType, Category, Comment, DocumentVersion, GovernmentBody, LegalAct,
@@ -277,5 +277,23 @@ def link_legal_act_category(session, legal_act_id, category_id, now):
     if existing is None:
         session.add(LegalActCategory(
             legal_act_id=legal_act_id, category_id=category_id, first_seen_at=now,
+        ))
+        session.commit()
+
+
+def record_comments_total_mismatch(session, legal_act_id, comments_total, now):
+    if comments_total is None:
+        return
+
+    collected = session.execute(
+        select(func.count(Comment.id)).where(Comment.legal_act_id == legal_act_id)
+    ).scalar_one()
+
+    if collected != comments_total:
+        session.add(QualityEvent(
+            legal_act_id=legal_act_id, event_type="comments_total_mismatch",
+            field_name="comments_total",
+            detail=f"source={comments_total}, collected={collected}",
+            detected_at=now,
         ))
         session.commit()

@@ -216,6 +216,8 @@ def process_document_entry(session, fetcher, url, section="npa"):
             if report_response.status_code == 200 and report_response.text.strip():
                 store.upsert_report(session, legal_act_id, report_response.text, timestamp)
 
+    store.record_comments_total_mismatch(session, legal_act_id, fields.get("comments_total"), timestamp)
+
 
 def run(database_url, limit=None):
     engine, SessionLocal = create_engine_and_session_factory(database_url)

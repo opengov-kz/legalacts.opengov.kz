@@ -158,6 +158,26 @@ def test_process_document_entry_stores_document_and_comments(db_session):
     assert fetcher.lang_calls == ["kk", "ru"]
 
 
+def test_process_document_entry_records_comments_total_mismatch(db_session):
+    ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
+    kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
+    url = "https://legalacts.egov.kz/npa/view?id=15906353"
+    fetcher = StubFetcher({url: [ru_html, kk_html]})
+
+    run_module.process_document_entry(db_session, fetcher, url, section="withdraw")
+
+    from db.models import LegalAct, QualityEvent
+    act = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 15906353)
+    ).fetchone()
+
+    events = db_session.query(QualityEvent).filter_by(
+        legal_act_id=act.id, event_type="comments_total_mismatch",
+    ).all()
+    assert len(events) == 1
+    assert events[0].detail == "source=24, collected=20"
+
+
 def test_process_document_entry_fetches_expert_participation_channels(db_session):
     ru_html = (FIXTURES / "document_with_comments.html").read_text(encoding="utf-8")
     kk_html = (FIXTURES / "document_with_comments_kk.html").read_text(encoding="utf-8")
