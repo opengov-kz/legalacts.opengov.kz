@@ -14,7 +14,7 @@ def test_legal_acts_table_has_expected_columns(db_session):
     assert columns == {
         "id", "external_id", "section", "url", "title_ru", "title_kk", "status",
         "act_type_id", "government_body_id", "created_date", "discussion_end_date",
-        "comments_total", "likes_count", "dislikes_count",
+        "comments_total", "likes_count", "dislikes_count", "views_count",
         "content_sha256_ru", "content_sha256_kk", "first_seen_at", "last_checked_at",
     }
 

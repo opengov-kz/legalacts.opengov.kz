@@ -38,6 +38,7 @@ class LegalAct(Base):
     comments_total = Column(Integer)
     likes_count = Column(Integer)
     dislikes_count = Column(Integer)
+    views_count = Column(Integer)
     content_sha256_ru = Column(String(64))
     content_sha256_kk = Column(String(64))
     first_seen_at = Column(DateTime(timezone=True), nullable=False)

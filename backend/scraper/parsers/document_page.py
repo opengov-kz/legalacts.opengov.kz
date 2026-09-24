@@ -38,6 +38,18 @@ def _count_by_class_prefix(soup, prefix):
     return int(text) if text.isdigit() else 0
 
 
+def _views_count(soup):
+    # Keyed on classes, not the "Количество просмотров" title attribute:
+    # the .blog-item (arv) template carries the same icon classes but no
+    # title (confirmed live 2026-09-24), while .view-npa (npa/kdrp) has both.
+    icon = soup.select_one("i.liker.fa-eye")
+    if icon is None:
+        return 0
+    li = icon.find_parent("li")
+    match = re.search(r"\d+", li.get_text()) if li else None
+    return int(match.group()) if match else 0
+
+
 def parse_document_page(html):
     soup = BeautifulSoup(html, "lxml")
 
@@ -68,6 +80,7 @@ def parse_document_page(html):
         "comments_total": comments_total,
         "likes_count": _count_by_class_prefix(soup, "likeCount-"),
         "dislikes_count": _count_by_class_prefix(soup, "dislikeCount-"),
+        "views_count": _views_count(soup),
     }
 
 

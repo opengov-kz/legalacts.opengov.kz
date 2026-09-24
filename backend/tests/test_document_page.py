@@ -23,6 +23,31 @@ def test_parse_document_page_extracts_core_fields_without_comments():
     assert data["comments_total"] == 0
     assert data["likes_count"] == 0
     assert data["dislikes_count"] == 0
+    assert data["views_count"] == 74
+
+
+def test_parse_document_page_reads_views_count_from_titled_eye_icon():
+    # .view-npa template (npa/kdrp): the eye icon carries a title attribute.
+    html = (
+        '<div class="view-npa"><h2>Test</h2>'
+        '<li><i class="liker fa fa-eye" title="Количество просмотров"></i> 96</li>'
+        '</div>'
+    )
+    data = document_page.parse_document_page(html)
+    assert data["views_count"] == 96
+
+
+def test_parse_document_page_reads_views_count_from_untitled_eye_icon():
+    # .blog-item template (arv): the same icon appears WITHOUT a title
+    # attribute — confirmed live 2026-09-24 — so the selector must key on
+    # the CSS classes (liker + fa-eye), not the title text.
+    html = (
+        '<div class="blog-item"><h2>Test</h2>'
+        '<li><i class="liker fa fa-eye"></i> 39</li>'
+        '</div>'
+    )
+    data = document_page.parse_document_page(html)
+    assert data["views_count"] == 39
 
 
 def test_parse_document_page_reads_counts_with_comments():
@@ -33,6 +58,7 @@ def test_parse_document_page_reads_counts_with_comments():
     assert data["comments_total"] == 24
     assert data["likes_count"] == 0
     assert data["dislikes_count"] == 1
+    assert data["views_count"] == 822
 
 
 def test_parse_document_page_reads_kk_title():
@@ -56,6 +82,7 @@ def test_parse_document_page_reads_arv_conclusion_template():
     assert data["comments_total"] == 0
     assert data["likes_count"] == 1
     assert data["dislikes_count"] == 0
+    assert data["views_count"] == 35
 
 
 def test_parse_document_page_falls_back_to_government_body_label_when_gov_parent_absent():

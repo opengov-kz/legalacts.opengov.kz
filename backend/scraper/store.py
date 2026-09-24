@@ -136,6 +136,7 @@ def upsert_legal_act(session, external_id, section, url, fields, now):
         "comments_total": fields.get("comments_total"),
         "likes_count": fields.get("likes_count"),
         "dislikes_count": fields.get("dislikes_count"),
+        "views_count": fields.get("views_count"),
         "content_sha256_ru": content_sha256_ru,
         "content_sha256_kk": content_sha256_kk,
     }

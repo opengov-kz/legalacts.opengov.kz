@@ -14,7 +14,7 @@ def _fields(**overrides):
         status="Status_Value_001", doc_type="DocType_Value_001",
         government_body="Body_Value_001", created_date="01/01/2026",
         discussion_end_date="31/12/2026", comments_total=42,
-        likes_count=99, dislikes_count=88,
+        likes_count=99, dislikes_count=88, views_count=15,
         raw_html_ru="<html>content_ru_001</html>",
         raw_html_kk="<html>content_kk_001</html>",
     )
@@ -49,6 +49,7 @@ def test_upsert_legal_act_inserts_new_row_and_creates_snapshot(db_session):
     assert row.comments_total == 42
     assert row.likes_count == 99
     assert row.dislikes_count == 88
+    assert row.views_count == 15
     assert row.first_seen_at == T1
     assert row.last_checked_at == T1
 
@@ -78,6 +79,20 @@ def test_upsert_legal_act_updates_existing_and_preserves_first_seen_at(db_sessio
     assert row.title_ru == "V2"
     assert row.first_seen_at == T1
     assert row.last_checked_at == T2
+
+
+def test_upsert_legal_act_updates_views_count_without_creating_new_snapshot(db_session):
+    legal_act_id = store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(views_count=15), T1)
+    store.upsert_legal_act(db_session, 1, "npa", "url1", _fields(views_count=42), T2)
+
+    from db.models import LegalAct, LegalActSnapshot
+    row = db_session.execute(
+        LegalAct.__table__.select().where(LegalAct.external_id == 1)
+    ).fetchone()
+    assert row.views_count == 42
+
+    snapshots = db_session.query(LegalActSnapshot).filter_by(legal_act_id=legal_act_id).all()
+    assert len(snapshots) == 1
 
 
 def test_upsert_legal_act_keeps_kk_fields_when_not_provided(db_session):
